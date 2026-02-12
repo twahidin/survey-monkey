@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Survey Admin</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #f1f5f9; --surface: #ffffff; --primary: #4f46e5;
+            --primary-hover: #4338ca; --text: #1e293b; --muted: #64748b;
+            --border: #e2e8f0; --success: #10b981; --danger: #ef4444;
+            --warning: #f59e0b; --radius: 12px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text); min-height: 100vh;
+        }
+        .hidden { display: none !important; }
+
+        /* ── Auth ── */
+        .auth-wrapper {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 16px;
+        }
+        .auth-card {
+            background: var(--surface); border-radius: var(--radius);
+            box-shadow: 0 4px 24px rgba(0,0,0,.06); padding: 40px 36px;
+            width: 100%; max-width: 400px; text-align: center;
+        }
+        .auth-card h1 { font-size: 1.5rem; margin-bottom: 4px; }
+        .auth-card .sub { color: var(--muted); margin-bottom: 28px; font-size: .9rem; }
+        .form-group { margin-bottom: 16px; text-align: left; }
+        .form-group label { font-size: .85rem; font-weight: 600; display: block; margin-bottom: 4px; }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%; padding: 10px 12px; border: 2px solid var(--border);
+            border-radius: 8px; font-size: .95rem; outline: none; font-family: inherit;
+        }
+        .form-group input:focus, .form-group textarea:focus { border-color: var(--primary); }
+        .btn {
+            display: inline-block; padding: 10px 24px; font-size: .95rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: var(--primary); color: #fff; transition: background .15s;
+        }
+        .btn:hover { background: var(--primary-hover); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+        .btn-outline:hover { background: var(--primary); color: #fff; }
+        .btn-danger { background: var(--danger); }
+        .btn-danger:hover { background: #dc2626; }
+        .btn-success { background: var(--success); }
+        .btn-sm { padding: 6px 14px; font-size: .85rem; }
+        .error { color: var(--danger); margin-top: 8px; font-size: .85rem; }
+        .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: .9rem; text-decoration: underline; }
+
+        /* ── Layout ── */
+        .topbar {
+            background: var(--surface); padding: 12px 28px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.05); display: flex;
+            align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10;
+        }
+        .topbar h1 { font-size: 1.15rem; }
+        .topbar .user-info { display: flex; align-items: center; gap: 12px; }
+        .main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--surface); border-radius: var(--radius);
+            box-shadow: 0 2px 12px rgba(0,0,0,.04); padding: 24px; margin-bottom: 20px;
+        }
+        .card h3 { margin-bottom: 16px; }
+
+        /* ── Survey List ── */
+        .survey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+        .survey-card {
+            background: var(--surface); border-radius: var(--radius);
+            box-shadow: 0 2px 12px rgba(0,0,0,.04); padding: 20px;
+            cursor: pointer; transition: box-shadow .15s; border: 2px solid transparent;
+        }
+        .survey-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); border-color: var(--primary); }
+        .survey-card h3 { font-size: 1.05rem; margin-bottom: 6px; }
+        .survey-card .code { font-family: monospace; font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+        .badge {
+            display: inline-block; padding: 2px 10px; border-radius: 99px;
+            font-size: .75rem; font-weight: 700; text-transform: uppercase;
+        }
+        .badge-active { background: #d1fae5; color: #065f46; }
+        .badge-closed { background: #fee2e2; color: #991b1b; }
+        .badge-draft { background: #e0e7ff; color: #3730a3; }
+        .stats-row { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
+        .stat { text-align: center; }
+        .stat .num { font-size: 1.3rem; font-weight: 700; }
+        .stat .lbl { font-size: .75rem; color: var(--muted); }
+
+        /* ── Detail View ── */
+        .back-link { color: var(--primary); cursor: pointer; font-weight: 600; margin-bottom: 16px; display: inline-block; }
+        .detail-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+        .detail-header h2 { flex: 1; }
+        .stats-bar { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+        .stat-box {
+            background: var(--bg); border-radius: 10px; padding: 16px 24px; text-align: center; min-width: 120px;
+        }
+        .stat-box .num { font-size: 1.6rem; font-weight: 700; color: var(--primary); }
+        .stat-box .lbl { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+
+        /* ── Tabs ── */
+        .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+        .tab {
+            padding: 10px 20px; font-weight: 600; cursor: pointer;
+            border-bottom: 3px solid transparent; color: var(--muted);
+            transition: all .15s; background: none; border-top: none; border-left: none; border-right: none;
+            font-size: .95rem;
+        }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ── Participant list ── */
+        .participant-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+        .participant-table th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); font-size: .8rem; color: var(--muted); text-transform: uppercase; }
+        .participant-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        .participant-table tr { cursor: pointer; }
+        .participant-table tr:hover { background: var(--bg); }
+
+        /* ── Conversation viewer ── */
+        .convo-viewer { max-height: 500px; overflow-y: auto; padding: 16px; background: var(--bg); border-radius: 10px; }
+        .convo-msg { margin-bottom: 10px; }
+        .convo-msg .role { font-weight: 700; font-size: .8rem; text-transform: uppercase; color: var(--muted); }
+        .convo-msg .text { margin-top: 2px; white-space: pre-wrap; line-height: 1.5; }
+
+        /* ── Analysis Chat ── */
+        .analysis-chat { display: flex; flex-direction: column; height: 480px; }
+        .analysis-messages { flex: 1; overflow-y: auto; padding: 16px; background: var(--bg); border-radius: 10px 10px 0 0; display: flex; flex-direction: column; gap: 10px; }
+        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; }
+        .analysis-msg.user { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .analysis-msg.assistant { background: var(--surface); align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+        .analysis-input-area { display: flex; gap: 8px; padding: 12px; background: var(--surface); border-radius: 0 0 10px 10px; border-top: 1px solid var(--border); }
+        .analysis-input-area input { flex: 1; padding: 10px 12px; border: 2px solid var(--border); border-radius: 8px; outline: none; font-size: .9rem; }
+        .analysis-input-area input:focus { border-color: var(--primary); }
+
+        /* ── Modal ── */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center;
+            z-index: 100; padding: 16px;
+        }
+        .modal {
+            background: var(--surface); border-radius: var(--radius);
+            padding: 32px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+        }
+        .modal h2 { margin-bottom: 20px; }
+
+        @media (max-width: 600px) {
+            .stats-bar { gap: 12px; }
+            .stat-box { min-width: 80px; padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══ AUTH SCREEN ═══ -->
+<div id="auth-screen" class="auth-wrapper">
+    <div class="auth-card">
+        <h1>Survey Admin</h1>
+        <p class="sub">Sign in to manage your surveys</p>
+        <div id="login-form">
+            <div class="form-group">
+                <label>Username</label>
+                <input id="auth-user" placeholder="admin">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input id="auth-pass" type="password" placeholder="••••••••"
+                       onkeydown="if(event.key==='Enter')doLogin()">
+            </div>
+            <button class="btn" style="width:100%;margin-top:8px" onclick="doLogin()">Sign In</button>
+            <div class="error" id="auth-error"></div>
+            <p style="margin-top:16px">
+                <button class="link-btn" onclick="toggleAuthMode()">Create an account</button>
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ DASHBOARD ═══ -->
+<div id="dashboard" class="hidden">
+    <div class="topbar">
+        <h1>Survey Admin</h1>
+        <div class="user-info">
+            <span id="admin-name"></span>
+            <button class="btn btn-sm btn-outline" onclick="doLogout()">Sign Out</button>
+        </div>
+    </div>
+
+    <div class="main">
+        <!-- Survey List -->
+        <div id="list-view">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+                <h2>Your Surveys</h2>
+                <button class="btn" onclick="openCreateModal()">+ New Survey</button>
+            </div>
+            <div class="survey-grid" id="survey-grid"></div>
+            <p id="no-surveys" class="hidden" style="text-align:center;color:var(--muted);padding:40px">
+                No surveys yet. Create your first one!
+            </p>
+        </div>
+
+        <!-- Survey Detail -->
+        <div id="detail-view" class="hidden">
+            <span class="back-link" onclick="showList()">&larr; Back to surveys</span>
+            <div class="detail-header">
+                <h2 id="detail-title"></h2>
+                <span id="detail-badge"></span>
+                <span id="detail-code" style="font-family:monospace;font-size:1.1rem;font-weight:700;color:var(--primary)"></span>
+            </div>
+            <div class="stats-bar" id="detail-stats"></div>
+
+            <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-sm btn-danger" id="close-btn" onclick="closeSurvey()">Close Survey</button>
+                <button class="btn btn-sm btn-success hidden" id="reopen-btn" onclick="reopenSurvey()">Reopen Survey</button>
+                <button class="btn btn-sm btn-outline" onclick="refreshDetail()">Refresh</button>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('participants',this)">Participants</button>
+                <button class="tab" onclick="switchTab('conversation',this)">Conversations</button>
+                <button class="tab" onclick="switchTab('analysis',this)">Analysis Chat</button>
+                <button class="tab" onclick="switchTab('settings',this)">Settings</button>
+            </div>
+
+            <div class="tab-content active" id="tab-participants">
+                <table class="participant-table">
+                    <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Started</th></tr></thead>
+                    <tbody id="participant-tbody"></tbody>
+                </table>
+            </div>
+
+            <div class="tab-content" id="tab-conversation">
+                <p style="color:var(--muted);margin-bottom:12px">Click a participant above, or select one:</p>
+                <select id="convo-select" onchange="showConversation(this.value)" style="padding:8px 12px;border:2px solid var(--border);border-radius:8px;margin-bottom:16px;font-size:.9rem"></select>
+                <div class="convo-viewer" id="convo-viewer"></div>
+            </div>
+
+            <div class="tab-content" id="tab-analysis">
+                <p style="color:var(--muted);margin-bottom:12px;font-size:.9rem">
+                    Chat with AI to analyze survey responses. Ask about themes, sentiment, insights, etc.
+                </p>
+                <div class="analysis-chat">
+                    <div class="analysis-messages" id="analysis-messages"></div>
+                    <div class="analysis-input-area">
+                        <input id="analysis-input" placeholder="Ask about survey results…"
+                               onkeydown="if(event.key==='Enter')sendAnalysis()">
+                        <button class="btn btn-sm" id="analysis-send" onclick="sendAnalysis()">Send</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-settings">
+                <div class="card">
+                    <h3>Survey Settings</h3>
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input id="edit-title">
+                    </div>
+                    <div class="form-group">
+                        <label>Topic</label>
+                        <input id="edit-topic">
+                    </div>
+                    <div class="form-group">
+                        <label>System Prompt</label>
+                        <textarea id="edit-prompt" rows="6"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Messages per Participant</label>
+                        <input id="edit-max" type="number" min="1" max="100">
+                    </div>
+                    <button class="btn" onclick="saveSettings()">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ CREATE MODAL ═══ -->
+<div id="create-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCreateModal()">
+    <div class="modal">
+        <h2>Create New Survey</h2>
+        <div class="form-group">
+            <label>Title</label>
+            <input id="new-title" placeholder="Customer Satisfaction Survey">
+        </div>
+        <div class="form-group">
+            <label>Topic</label>
+            <input id="new-topic" placeholder="Gather feedback on our product experience">
+        </div>
+        <div class="form-group">
+            <label>System Prompt (instructions for the chatbot)</label>
+            <textarea id="new-prompt" rows="6" placeholder="You are a friendly survey assistant. Your goal is to gather insights about the customer's experience with our product. Ask open-ended questions, follow up on interesting points, and be conversational."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Survey Code (optional — auto-generated if blank)</label>
+            <input id="new-code" placeholder="MYCODE" maxlength="10" style="text-transform:uppercase">
+        </div>
+        <div class="form-group">
+            <label>Max Messages per Participant</label>
+            <input id="new-max" type="number" value="20" min="1" max="100">
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+            <button class="btn" onclick="createSurvey()">Create Survey</button>
+            <button class="btn btn-outline" onclick="closeCreateModal()">Cancel</button>
+        </div>
+        <div class="error" id="create-error"></div>
+    </div>
+</div>
+
+<script>
+let token = localStorage.getItem('admin_token');
+let currentSurveyId = null;
+let currentResults = null;
+let isRegister = false;
+
+// ── Auth ──
+function toggleAuthMode() {
+    isRegister = !isRegister;
+    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create Account' : 'Survey Admin';
+    document.querySelector('.auth-card .sub').textContent = isRegister ? 'Register a new admin account' : 'Sign in to manage your surveys';
+    document.querySelector('#login-form .btn').textContent = isRegister ? 'Register' : 'Sign In';
+    document.querySelector('#login-form .btn').setAttribute('onclick', isRegister ? 'doRegister()' : 'doLogin()');
+    document.querySelector('.link-btn').textContent = isRegister ? 'Already have an account? Sign in' : 'Create an account';
+}
+
+async function doLogin() {
+    const user = document.getElementById('auth-user').value.trim();
+    const pass = document.getElementById('auth-pass').value;
+    if (!user || !pass) return;
+    try {
+        const res = await api('/api/auth/login', 'POST', { username: user, password: pass });
+        token = res.token;
+        localStorage.setItem('admin_token', token);
+        document.getElementById('admin-name').textContent = res.username;
+        showDashboard();
+    } catch (e) {
+        document.getElementById('auth-error').textContent = e.message;
+    }
+}
+
+async function doRegister() {
+    const user = document.getElementById('auth-user').value.trim();
+    const pass = document.getElementById('auth-pass').value;
+    if (!user || !pass) return;
+    try {
+        const res = await api('/api/auth/register', 'POST', { username: user, password: pass });
+        token = res.token;
+        localStorage.setItem('admin_token', token);
+        document.getElementById('admin-name').textContent = res.username;
+        showDashboard();
+    } catch (e) {
+        document.getElementById('auth-error').textContent = e.message;
+    }
+}
+
+function doLogout() {
+    token = null;
+    localStorage.removeItem('admin_token');
+    document.getElementById('dashboard').classList.add('hidden');
+    document.getElementById('auth-screen').classList.remove('hidden');
+}
+
+function showDashboard() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('dashboard').classList.remove('hidden');
+    loadSurveys();
+}
+
+// ── API helper ──
+async function api(url, method = 'GET', body = null) {
+    const opts = {
+        method, headers: { 'Content-Type': 'application/json' },
+    };
+    if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    const data = await res.json();
+    if (!res.ok) {
+        if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
+        throw new Error(data.detail || 'Request failed');
+    }
+    return data;
+}
+
+// ── Surveys ──
+async function loadSurveys() {
+    const surveys = await api('/api/surveys');
+    const grid = document.getElementById('survey-grid');
+    const noSurveys = document.getElementById('no-surveys');
+    grid.innerHTML = '';
+    if (surveys.length === 0) { noSurveys.classList.remove('hidden'); return; }
+    noSurveys.classList.add('hidden');
+    surveys.forEach(s => {
+        const badgeClass = s.status === 'active' ? 'badge-active' : s.status === 'closed' ? 'badge-closed' : 'badge-draft';
+        grid.innerHTML += `
+            <div class="survey-card" onclick="openSurvey('${s.id}')">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <h3>${esc(s.title)}</h3>
+                    <span class="badge ${badgeClass}">${s.status}</span>
+                </div>
+                <div class="code">${s.survey_code}</div>
+                <div class="stats-row">
+                    <div class="stat"><div class="num">${s.active_participants}</div><div class="lbl">Active</div></div>
+                    <div class="stat"><div class="num">${s.completed_participants}</div><div class="lbl">Completed</div></div>
+                    <div class="stat"><div class="num">${s.total_participants}</div><div class="lbl">Total</div></div>
+                </div>
+            </div>`;
+    });
+}
+
+function openCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); }
+function closeCreateModal() { document.getElementById('create-modal').classList.add('hidden'); document.getElementById('create-error').textContent = ''; }
+
+async function createSurvey() {
+    try {
+        const data = {
+            title: document.getElementById('new-title').value.trim(),
+            topic: document.getElementById('new-topic').value.trim(),
+            system_prompt: document.getElementById('new-prompt').value.trim(),
+            survey_code: document.getElementById('new-code').value.trim() || undefined,
+            max_messages: parseInt(document.getElementById('new-max').value) || 20,
+        };
+        if (!data.title || !data.topic || !data.system_prompt) throw new Error('Title, topic, and prompt are required');
+        await api('/api/surveys', 'POST', data);
+        closeCreateModal();
+        ['new-title','new-topic','new-prompt','new-code'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('new-max').value = '20';
+        loadSurveys();
+    } catch (e) {
+        document.getElementById('create-error').textContent = e.message;
+    }
+}
+
+// ── Detail ──
+function showList() {
+    document.getElementById('list-view').classList.remove('hidden');
+    document.getElementById('detail-view').classList.add('hidden');
+    loadSurveys();
+}
+
+async function openSurvey(id) {
+    currentSurveyId = id;
+    document.getElementById('list-view').classList.add('hidden');
+    document.getElementById('detail-view').classList.remove('hidden');
+    await refreshDetail();
+    loadAnalysisHistory();
+}
+
+async function refreshDetail() {
+    const data = await api(`/api/surveys/${currentSurveyId}/results`);
+    currentResults = data;
+    const s = data.survey; const st = data.stats;
+
+    document.getElementById('detail-title').textContent = s.title;
+    document.getElementById('detail-code').textContent = s.survey_code;
+    const badgeClass = s.status === 'active' ? 'badge-active' : s.status === 'closed' ? 'badge-closed' : 'badge-draft';
+    document.getElementById('detail-badge').innerHTML = `<span class="badge ${badgeClass}">${s.status}</span>`;
+
+    document.getElementById('close-btn').classList.toggle('hidden', s.status !== 'active');
+    document.getElementById('reopen-btn').classList.toggle('hidden', s.status !== 'closed');
+
+    const avgMin = st.avg_completion_seconds ? (st.avg_completion_seconds / 60).toFixed(1) + ' min' : '—';
+    document.getElementById('detail-stats').innerHTML = `
+        <div class="stat-box"><div class="num">${st.active_participants}</div><div class="lbl">Active Now</div></div>
+        <div class="stat-box"><div class="num">${st.completed_participants}</div><div class="lbl">Completed</div></div>
+        <div class="stat-box"><div class="num">${st.total_participants}</div><div class="lbl">Total</div></div>
+        <div class="stat-box"><div class="num">${avgMin}</div><div class="lbl">Avg Time</div></div>`;
+
+    // Participants table
+    const tbody = document.getElementById('participant-tbody');
+    tbody.innerHTML = '';
+    const select = document.getElementById('convo-select');
+    select.innerHTML = '<option value="">Select participant…</option>';
+    data.participants.forEach((p, i) => {
+        const dur = p.duration_seconds ? (p.duration_seconds / 60).toFixed(1) + 'm' : '—';
+        const time = new Date(p.started_at).toLocaleString();
+        const statusClass = p.status === 'active' ? 'badge-active' : p.status === 'completed' ? 'badge-closed' : 'badge-draft';
+        tbody.innerHTML += `<tr onclick="selectParticipant(${i})">
+            <td>${p.id.substring(0,8)}</td>
+            <td><span class="badge ${statusClass}">${p.status}</span></td>
+            <td>${p.message_count}</td>
+            <td>${dur}</td>
+            <td>${time}</td>
+        </tr>`;
+        select.innerHTML += `<option value="${i}">P-${p.id.substring(0,8)} (${p.status})</option>`;
+    });
+
+    // Settings
+    document.getElementById('edit-title').value = s.title;
+    document.getElementById('edit-topic').value = s.topic;
+    // Need to fetch survey details for prompt - use the survey list data
+    const surveys = await api('/api/surveys');
+    const full = surveys.find(x => x.id === currentSurveyId);
+    if (full) {
+        document.getElementById('edit-max').value = full.max_messages;
+    }
+}
+
+function selectParticipant(idx) {
+    switchTab('conversation', document.querySelectorAll('.tab')[1]);
+    document.getElementById('convo-select').value = idx;
+    showConversation(idx);
+}
+
+function showConversation(idx) {
+    if (idx === '' || !currentResults) return;
+    const p = currentResults.participants[idx];
+    const viewer = document.getElementById('convo-viewer');
+    viewer.innerHTML = '';
+    p.messages.forEach(m => {
+        viewer.innerHTML += `<div class="convo-msg"><div class="role">${m.role}</div><div class="text">${esc(m.content)}</div></div>`;
+    });
+}
+
+function switchTab(name, el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+}
+
+async function closeSurvey() {
+    if (!confirm('Close this survey? Active participants will be marked as abandoned.')) return;
+    await api(`/api/surveys/${currentSurveyId}/close`, 'POST');
+    refreshDetail();
+}
+
+async function reopenSurvey() {
+    await api(`/api/surveys/${currentSurveyId}/reopen`, 'POST');
+    refreshDetail();
+}
+
+async function saveSettings() {
+    const data = {
+        title: document.getElementById('edit-title').value.trim(),
+        topic: document.getElementById('edit-topic').value.trim(),
+        system_prompt: document.getElementById('edit-prompt').value.trim() || undefined,
+        max_messages: parseInt(document.getElementById('edit-max').value) || undefined,
+    };
+    await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
+    alert('Settings saved!');
+    refreshDetail();
+}
+
+// ── Analysis Chat ──
+async function loadAnalysisHistory() {
+    const msgs = await api(`/api/surveys/${currentSurveyId}/analysis-history`);
+    const container = document.getElementById('analysis-messages');
+    container.innerHTML = '';
+    msgs.forEach(m => {
+        const el = document.createElement('div');
+        el.className = `analysis-msg ${m.role}`;
+        el.textContent = m.content;
+        container.appendChild(el);
+    });
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendAnalysis() {
+    const input = document.getElementById('analysis-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    const container = document.getElementById('analysis-messages');
+    const userEl = document.createElement('div');
+    userEl.className = 'analysis-msg user';
+    userEl.textContent = text;
+    container.appendChild(userEl);
+    container.scrollTop = container.scrollHeight;
+
+    document.getElementById('analysis-send').disabled = true;
+
+    try {
+        const res = await api(`/api/surveys/${currentSurveyId}/analyze`, 'POST', {
+            survey_id: currentSurveyId, message: text
+        });
+        const el = document.createElement('div');
+        el.className = 'analysis-msg assistant';
+        el.textContent = res.response;
+        container.appendChild(el);
+        container.scrollTop = container.scrollHeight;
+    } catch (e) {
+        const el = document.createElement('div');
+        el.className = 'analysis-msg assistant';
+        el.textContent = 'Error: ' + e.message;
+        container.appendChild(el);
+    } finally {
+        document.getElementById('analysis-send').disabled = false;
+        input.focus();
+    }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Init ──
+if (token) {
+    // Verify token works
+    api('/api/surveys').then(data => {
+        showDashboard();
+    }).catch(() => { doLogout(); });
+}
+
+// Auto-refresh active surveys every 15s
+setInterval(() => {
+    if (currentSurveyId && !document.getElementById('detail-view').classList.contains('hidden')) {
+        refreshDetail();
+    }
+}, 15000);
+</script>
+</body>
+</html>

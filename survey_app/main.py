@@ -1,0 +1,557 @@
+"""Main FastAPI application - Survey Chatbot with Admin Dashboard."""
+
+import os
+import uuid
+import secrets
+import string
+from datetime import datetime, timezone
+from typing import Optional
+
+import anthropic
+from fastapi import FastAPI, Depends, HTTPException, Request, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, FileResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+
+from database import get_db, init_db
+from models import (
+    Survey, SurveyStatus, Participant, ParticipantStatus,
+    ChatMessage, AdminUser, AnalysisMessage,
+)
+from auth import (
+    authenticate_admin, create_admin_user, create_access_token,
+    decode_token, hash_password,
+)
+
+app = FastAPI(title="Survey Chatbot", version="1.0.0")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+
+# ──────────────────────────── Startup ────────────────────────────
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+    # Create default admin if none exist
+    db = next(get_db())
+    try:
+        if db.query(AdminUser).count() == 0:
+            default_user = os.environ.get("DEFAULT_ADMIN_USER", "admin")
+            default_pass = os.environ.get("DEFAULT_ADMIN_PASS", "admin123")
+            create_admin_user(db, default_user, default_pass)
+            print(f"Created default admin: {default_user}")
+    finally:
+        db.close()
+
+
+# ──────────────────────────── Helpers ────────────────────────────
+
+def get_current_admin(request: Request, db: Session = Depends(get_db)) -> AdminUser:
+    token = request.cookies.get("admin_token") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    admin = db.query(AdminUser).filter(AdminUser.id == payload["sub"]).first()
+    if not admin:
+        raise HTTPException(status_code=401, detail="Admin not found")
+    return admin
+
+
+def generate_survey_code(length: int = 6) -> str:
+    chars = string.ascii_uppercase + string.digits
+    return "".join(secrets.choice(chars) for _ in range(length))
+
+
+def get_claude_client():
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
+    return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+# ──────────────────────────── Pydantic Schemas ────────────────────────────
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+class SurveyCreate(BaseModel):
+    title: str
+    topic: str
+    system_prompt: str
+    survey_code: Optional[str] = None
+    max_messages: int = 20
+
+class SurveyUpdate(BaseModel):
+    title: Optional[str] = None
+    topic: Optional[str] = None
+    system_prompt: Optional[str] = None
+    max_messages: Optional[int] = None
+
+class JoinSurveyRequest(BaseModel):
+    survey_code: str
+
+class ChatRequest(BaseModel):
+    session_token: str
+    message: str
+
+class AnalysisChatRequest(BaseModel):
+    survey_id: str
+    message: str
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PAGE ROUTES
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/", response_class=HTMLResponse)
+def serve_survey_page():
+    return FileResponse("templates/survey.html")
+
+@app.get("/admin", response_class=HTMLResponse)
+def serve_admin_page():
+    return FileResponse("templates/admin.html")
+
+
+# ══════════════════════════════════════════════════════════════════
+#  AUTH API
+# ══════════════════════════════════════════════════════════════════
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    admin = authenticate_admin(db, req.username, req.password)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_access_token({"sub": str(admin.id), "username": admin.username})
+    response.set_cookie("admin_token", token, httponly=True, samesite="lax", max_age=86400)
+    return {"token": token, "username": admin.username}
+
+@app.post("/api/auth/register")
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    if db.query(AdminUser).filter(AdminUser.username == req.username).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+    admin = create_admin_user(db, req.username, req.password)
+    token = create_access_token({"sub": str(admin.id), "username": admin.username})
+    return {"token": token, "username": admin.username}
+
+@app.post("/api/auth/logout")
+def logout(response: Response):
+    response.delete_cookie("admin_token")
+    return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN - SURVEY MANAGEMENT
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/surveys")
+def list_surveys(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    surveys = (
+        db.query(Survey)
+        .filter(Survey.admin_id == admin.id)
+        .options(joinedload(Survey.participants))
+        .order_by(Survey.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "topic": s.topic,
+            "survey_code": s.survey_code,
+            "status": s.status.value,
+            "max_messages": s.max_messages,
+            "created_at": s.created_at.isoformat(),
+            "closed_at": s.closed_at.isoformat() if s.closed_at else None,
+            "active_participants": s.active_participants_count,
+            "completed_participants": s.completed_participants_count,
+            "total_participants": s.total_participants_count,
+        }
+        for s in surveys
+    ]
+
+
+@app.post("/api/surveys")
+def create_survey(
+    req: SurveyCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    code = req.survey_code or generate_survey_code()
+    if db.query(Survey).filter(Survey.survey_code == code).first():
+        raise HTTPException(status_code=400, detail="Survey code already in use")
+    survey = Survey(
+        title=req.title,
+        topic=req.topic,
+        system_prompt=req.system_prompt,
+        survey_code=code.upper(),
+        max_messages=req.max_messages,
+        admin_id=admin.id,
+        status=SurveyStatus.ACTIVE,
+    )
+    db.add(survey)
+    db.commit()
+    db.refresh(survey)
+    return {"id": str(survey.id), "survey_code": survey.survey_code}
+
+
+@app.patch("/api/surveys/{survey_id}")
+def update_survey(
+    survey_id: str,
+    req: SurveyUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    for field, value in req.dict(exclude_unset=True).items():
+        setattr(survey, field, value)
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/surveys/{survey_id}/close")
+def close_survey(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    survey.status = SurveyStatus.CLOSED
+    survey.closed_at = datetime.now(timezone.utc)
+    # Mark all active participants as abandoned
+    for p in survey.participants:
+        if p.status == ParticipantStatus.ACTIVE:
+            p.status = ParticipantStatus.ABANDONED
+            p.completed_at = datetime.now(timezone.utc)
+            p.duration_seconds = (p.completed_at - p.started_at).total_seconds()
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/surveys/{survey_id}/reopen")
+def reopen_survey(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    survey.status = SurveyStatus.ACTIVE
+    survey.closed_at = None
+    db.commit()
+    return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN - ANALYTICS
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/surveys/{survey_id}/results")
+def get_survey_results(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = (
+        db.query(Survey)
+        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .options(joinedload(Survey.participants).joinedload(Participant.messages))
+        .first()
+    )
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    participants_data = []
+    completion_times = []
+    for p in sorted(survey.participants, key=lambda x: x.started_at):
+        msgs = sorted(p.messages, key=lambda m: m.created_at)
+        p_data = {
+            "id": str(p.id),
+            "status": p.status.value,
+            "started_at": p.started_at.isoformat(),
+            "completed_at": p.completed_at.isoformat() if p.completed_at else None,
+            "duration_seconds": p.duration_seconds,
+            "message_count": len(msgs),
+            "messages": [
+                {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+                for m in msgs
+            ],
+        }
+        participants_data.append(p_data)
+        if p.duration_seconds:
+            completion_times.append(p.duration_seconds)
+
+    avg_time = sum(completion_times) / len(completion_times) if completion_times else 0
+
+    return {
+        "survey": {
+            "id": str(survey.id),
+            "title": survey.title,
+            "topic": survey.topic,
+            "status": survey.status.value,
+            "survey_code": survey.survey_code,
+        },
+        "stats": {
+            "total_participants": len(survey.participants),
+            "active_participants": survey.active_participants_count,
+            "completed_participants": survey.completed_participants_count,
+            "avg_completion_seconds": round(avg_time, 1),
+        },
+        "participants": participants_data,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN - ANALYSIS CHATBOT (insights from survey data)
+# ══════════════════════════════════════════════════════════════════
+
+@app.post("/api/surveys/{survey_id}/analyze")
+def analyze_survey(
+    survey_id: str,
+    req: AnalysisChatRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = (
+        db.query(Survey)
+        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .options(joinedload(Survey.participants).joinedload(Participant.messages))
+        .first()
+    )
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    # Build survey data summary for context
+    all_conversations = []
+    for p in survey.participants:
+        if p.messages:
+            conv = "\n".join(f"  {m.role}: {m.content}" for m in sorted(p.messages, key=lambda x: x.created_at))
+            status_label = p.status.value
+            duration_label = f"{round(p.duration_seconds/60, 1)} min" if p.duration_seconds else "in progress"
+            all_conversations.append(f"[Participant {str(p.id)[:8]} | {status_label} | {duration_label}]\n{conv}")
+
+    survey_context = (
+        f"Survey: {survey.title}\n"
+        f"Topic: {survey.topic}\n"
+        f"Total participants: {len(survey.participants)}\n"
+        f"Completed: {survey.completed_participants_count}\n"
+        f"Active: {survey.active_participants_count}\n\n"
+        f"--- ALL CONVERSATIONS ---\n\n" +
+        "\n\n".join(all_conversations) if all_conversations else "No conversations yet."
+    )
+
+    # Load prior analysis messages
+    prior = (
+        db.query(AnalysisMessage)
+        .filter(AnalysisMessage.survey_id == survey_id, AnalysisMessage.admin_id == admin.id)
+        .order_by(AnalysisMessage.created_at)
+        .all()
+    )
+    history = [{"role": m.role, "content": m.content} for m in prior]
+    history.append({"role": "user", "content": req.message})
+
+    # Save user message
+    db.add(AnalysisMessage(
+        survey_id=survey_id, admin_id=admin.id, role="user", content=req.message
+    ))
+    db.commit()
+
+    # Call Claude
+    client = get_claude_client()
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2048,
+        system=(
+            "You are a survey data analyst. You have access to all the survey conversation data below. "
+            "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
+            "about the survey results. Be specific and cite participant responses when relevant.\n\n"
+            f"{survey_context}"
+        ),
+        messages=history,
+    )
+    assistant_text = response.content[0].text
+
+    # Save assistant message
+    db.add(AnalysisMessage(
+        survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text
+    ))
+    db.commit()
+
+    return {"response": assistant_text}
+
+
+@app.get("/api/surveys/{survey_id}/analysis-history")
+def get_analysis_history(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    messages = (
+        db.query(AnalysisMessage)
+        .filter(AnalysisMessage.survey_id == survey_id, AnalysisMessage.admin_id == admin.id)
+        .order_by(AnalysisMessage.created_at)
+        .all()
+    )
+    return [{"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in messages]
+
+
+# ══════════════════════════════════════════════════════════════════
+#  PUBLIC - SURVEY CHATBOT
+# ══════════════════════════════════════════════════════════════════
+
+@app.post("/api/survey/join")
+def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
+    survey = db.query(Survey).filter(Survey.survey_code == req.survey_code.upper()).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Invalid survey code")
+    if survey.status != SurveyStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="This survey is not currently active")
+
+    session_token = secrets.token_urlsafe(32)
+    participant = Participant(
+        survey_id=survey.id,
+        session_token=session_token,
+        status=ParticipantStatus.ACTIVE,
+    )
+    db.add(participant)
+    db.commit()
+
+    # Generate the opening message from Claude
+    client = get_claude_client()
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=survey.system_prompt,
+        messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them and begin.)"}],
+    )
+    opening = response.content[0].text
+
+    # Save the opening message
+    db.add(ChatMessage(participant_id=participant.id, role="assistant", content=opening))
+    db.commit()
+
+    return {
+        "session_token": session_token,
+        "survey_title": survey.title,
+        "opening_message": opening,
+    }
+
+
+@app.post("/api/survey/chat")
+def survey_chat(req: ChatRequest, db: Session = Depends(get_db)):
+    participant = (
+        db.query(Participant)
+        .filter(Participant.session_token == req.session_token)
+        .options(joinedload(Participant.messages), joinedload(Participant.survey))
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if participant.status != ParticipantStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="This survey session has ended")
+    if participant.survey.status != SurveyStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="This survey has been closed")
+
+    # Save user message
+    db.add(ChatMessage(participant_id=participant.id, role="user", content=req.message))
+    db.commit()
+
+    # Build conversation history
+    msgs = sorted(participant.messages, key=lambda m: m.created_at)
+    history = [{"role": m.role, "content": m.content} for m in msgs]
+    # Add the new message (since it's committed but not yet in the loaded relationship)
+    history.append({"role": "user", "content": req.message})
+
+    user_message_count = sum(1 for m in history if m["role"] == "user")
+    near_limit = user_message_count >= participant.survey.max_messages
+
+    system = participant.survey.system_prompt
+    if near_limit:
+        system += (
+            "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
+            "Thank them for their time, provide a brief summary of what you gathered, "
+            "and end the conversation warmly.]"
+        )
+
+    # Call Claude
+    client = get_claude_client()
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=system,
+        messages=history,
+    )
+    assistant_text = response.content[0].text
+
+    # Save assistant response
+    db.add(ChatMessage(participant_id=participant.id, role="assistant", content=assistant_text))
+
+    # Check if we should auto-complete
+    is_complete = near_limit
+    if is_complete:
+        now = datetime.now(timezone.utc)
+        participant.status = ParticipantStatus.COMPLETED
+        participant.completed_at = now
+        participant.duration_seconds = (now - participant.started_at).total_seconds()
+
+    db.commit()
+
+    return {
+        "response": assistant_text,
+        "is_complete": is_complete,
+    }
+
+
+@app.post("/api/survey/complete")
+def complete_survey_session(req: ChatRequest, db: Session = Depends(get_db)):
+    """Allow participant to manually end their session."""
+    participant = db.query(Participant).filter(Participant.session_token == req.session_token).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if participant.status == ParticipantStatus.ACTIVE:
+        now = datetime.now(timezone.utc)
+        participant.status = ParticipantStatus.COMPLETED
+        participant.completed_at = now
+        participant.duration_seconds = (now - participant.started_at).total_seconds()
+        db.commit()
+    return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  HEALTH CHECK
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": "1.0.0"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

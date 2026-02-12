@@ -1,0 +1,29 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Env and secrets
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Railway / deployment (optional; uncomment if you don't want to track)
+# railway.json
