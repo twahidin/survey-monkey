@@ -26,7 +26,8 @@ from auth import (
 )
 
 app = FastAPI(title="Survey Chatbot", version="1.0.0")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+if os.path.isdir("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 

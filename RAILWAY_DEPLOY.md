@@ -3,7 +3,7 @@
 ## 1. Log in (do this first in your terminal)
 
 ```bash
-cd /Users/joetay/Desktop/CTSS/CTSS_SURVEY_MONKEY/survey_app
+cd /Users/joetay/Desktop/CTSS/CTSS_SURVEY_MONKEY
 railway login
 ```
 
@@ -43,7 +43,7 @@ In the dashboard: your project → **Variables** → add:
 | `DEFAULT_ADMIN_USER` | Admin username (e.g. `admin`) |
 | `DEFAULT_ADMIN_PASS` | Admin password (e.g. a strong password) |
 
-Or via CLI (from `survey_app`):
+Or via CLI (from repo root):
 
 ```bash
 railway variables set ANTHROPIC_API_KEY=sk-ant-your-key
@@ -56,7 +56,7 @@ railway variables set DEFAULT_ADMIN_PASS=your-secure-password
 
 ## 5. Deploy
 
-From the `survey_app` directory:
+From the repo root:
 
 ```bash
 railway up

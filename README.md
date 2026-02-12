@@ -52,7 +52,6 @@ In your Railway service settings, add:
 ### 4. Deploy
 ```bash
 # Option A: Railway CLI
-cd survey_app
 railway up
 
 # Option B: Push to connected GitHub repo — auto-deploys
@@ -77,7 +76,6 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export SECRET_KEY=dev-secret-key
 
 # 3. Install and run
-cd survey_app
 pip install -r requirements.txt
 python main.py
 ```
