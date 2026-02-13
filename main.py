@@ -55,18 +55,22 @@ def on_startup():
     # Ensure default admin from env vars exists and password matches (so Railway vars always work)
     db = next(get_db())
     try:
-        default_user = os.environ.get("DEFAULT_ADMIN_USER", "admin")
-        default_pass = os.environ.get("DEFAULT_ADMIN_PASS", "admin123")
+        raw_user = os.environ.get("DEFAULT_ADMIN_USER") or "admin"
+        raw_pass = os.environ.get("DEFAULT_ADMIN_PASS") or "admin123"
+        default_user = raw_user.strip().strip("'\"").strip()
+        default_pass = raw_pass.strip().strip("'\"").strip() or "admin123"
+        if not default_user:
+            default_user = "admin"
         existing = db.query(AdminUser).filter(AdminUser.username == default_user).first()
         if existing:
             update_admin_password(db, existing, default_pass)
-            print(f"Updated password for admin: {default_user}")
+            print(f"[Startup] Updated password for admin: {default_user!r}")
         elif db.query(AdminUser).count() == 0:
             create_admin_user(db, default_user, default_pass)
-            print(f"Created default admin: {default_user}")
+            print(f"[Startup] Created default admin: {default_user!r}")
         else:
             create_admin_user(db, default_user, default_pass)
-            print(f"Created admin from env: {default_user}")
+            print(f"[Startup] Created admin from env: {default_user!r}")
     finally:
         db.close()
 
@@ -80,7 +84,11 @@ def get_current_admin(request: Request, db: Session = Depends(get_db)) -> AdminU
     payload = decode_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    admin = db.query(AdminUser).filter(AdminUser.id == payload["sub"]).first()
+    try:
+        admin_id = uuid.UUID(payload["sub"])
+    except (ValueError, TypeError, KeyError):
+        raise HTTPException(status_code=401, detail="Invalid token")
+    admin = db.query(AdminUser).filter(AdminUser.id == admin_id).first()
     if not admin:
         raise HTTPException(status_code=401, detail="Admin not found")
     return admin
@@ -151,7 +159,9 @@ def serve_admin_page():
 
 @app.post("/api/auth/login")
 def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
-    admin = authenticate_admin(db, req.username, req.password)
+    username = (req.username or "").strip()
+    password = (req.password or "").strip()
+    admin = authenticate_admin(db, username, password)
     if not admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token({"sub": str(admin.id), "username": admin.username})
@@ -572,6 +582,14 @@ def complete_survey_session(req: ChatRequest, db: Session = Depends(get_db)):
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "1.0.0"}
+
+
+@app.get("/api/admin-info")
+def admin_info():
+    """Return the admin username from env (so you can verify login). No password is ever returned."""
+    raw = os.environ.get("DEFAULT_ADMIN_USER") or "admin"
+    username = raw.strip().strip("'\"").strip() or "admin"
+    return {"default_admin_username": username}
 
 
 if __name__ == "__main__":

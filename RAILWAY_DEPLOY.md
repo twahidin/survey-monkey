@@ -97,3 +97,17 @@ This means the app is using the default database URL (localhost) because **`DATA
    - Click **+ New variable** → **Add reference**.
    - Choose the **PostgreSQL** service and the variable **DATABASE_URL**.
 5. **Redeploy** the app (e.g. **Deploy** → **Redeploy** or push a new commit) so it starts with `DATABASE_URL` set.
+
+---
+
+## Troubleshooting: Admin login doesn't work
+
+1. **Check which username the app is using**  
+   Open `https://your-app.up.railway.app/api/admin-info` in a browser. It returns `{"default_admin_username": "..."}`. Use that **exact** username (case-sensitive) on the login page.
+
+2. **Match Railway variables**  
+   In Railway → your app service → **Variables**, ensure `DEFAULT_ADMIN_USER` and `DEFAULT_ADMIN_PASS` have no extra spaces or quotes in the value.
+
+3. **Redeploy after changing variables** so the app restarts and syncs the admin password from env.
+
+4. **Check logs** (Railway → Deployments → View Logs) for `[Startup] Updated password for admin: '...'` to confirm the username being synced.
