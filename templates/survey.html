@@ -83,6 +83,80 @@
             align-self: flex-start; color: var(--muted); font-style: italic;
             font-size: .9rem; padding: 8px 0;
         }
+
+        /* Animated mascot (chat screen only) */
+        .mascot-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 10px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        .mascot-typing .mascot-left-arm {
+            animation: mascot-type-left 0.15s infinite alternate;
+            transform-origin: 40px 70px;
+        }
+        .mascot-typing .mascot-right-arm {
+            animation: mascot-type-right 0.15s infinite alternate;
+            transform-origin: 80px 70px;
+        }
+        .mascot-typing .mascot-head {
+            animation: mascot-bob 0.3s infinite;
+        }
+        .mascot-typing .mascot-hand-left {
+            animation: mascot-wiggle-left 0.15s infinite alternate;
+        }
+        .mascot-typing .mascot-hand-right {
+            animation: mascot-wiggle-right 0.15s infinite alternate;
+        }
+        @keyframes mascot-type-left {
+            0% { transform: rotate(-25deg); }
+            100% { transform: rotate(-15deg); }
+        }
+        @keyframes mascot-type-right {
+            0% { transform: rotate(25deg); }
+            100% { transform: rotate(15deg); }
+        }
+        @keyframes mascot-bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        @keyframes mascot-wiggle-left {
+            0% { transform: translate(0, 0) rotate(-5deg); }
+            100% { transform: translate(-2px, 2px) rotate(-10deg); }
+        }
+        @keyframes mascot-wiggle-right {
+            0% { transform: translate(0, 0) rotate(5deg); }
+            100% { transform: translate(2px, 2px) rotate(10deg); }
+        }
+        .mascot-status {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            width: 15px;
+            height: 15px;
+            background: var(--success);
+            border: 3px solid white;
+            border-radius: 50%;
+        }
+        .mascot-status.active {
+            animation: mascot-pulse 1s infinite;
+        }
+        @keyframes mascot-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+        }
+        @media (max-width: 768px) {
+            .mascot-container {
+                top: 10px;
+                right: 10px;
+                transform: scale(0.8);
+            }
+        }
+
         .chat-input-area {
             background: var(--surface); padding: 16px 20px;
             border-radius: 0 0 var(--radius) var(--radius);
@@ -126,6 +200,60 @@
 
     <!-- Chat Screen -->
     <div id="chat-screen">
+        <div class="mascot-container" id="mascot-container">
+            <svg id="mascot-svg" width="140" height="140" viewBox="0 0 140 140">
+                <rect x="35" y="105" width="70" height="20" rx="4" fill="#2c3e50" opacity="0.9"/>
+                <rect x="40" y="109" width="8" height="6" rx="1" fill="#34495e"/>
+                <rect x="50" y="109" width="8" height="6" rx="1" fill="#34495e"/>
+                <rect x="60" y="109" width="8" height="6" rx="1" fill="#34495e"/>
+                <rect x="70" y="109" width="8" height="6" rx="1" fill="#34495e"/>
+                <rect x="80" y="109" width="8" height="6" rx="1" fill="#34495e"/>
+                <rect x="90" y="109" width="8" height="6" rx="1" fill="#34495e"/>
+                <ellipse cx="70" cy="85" rx="28" ry="32" fill="#8B4513"/>
+                <path d="M 90 85 Q 110 85 115 95 Q 118 105 110 110" stroke="#8B4513" stroke-width="6" fill="none" stroke-linecap="round"/>
+                <g class="mascot-left-arm">
+                    <ellipse cx="45" cy="78" rx="10" ry="22" fill="#8B4513" transform="rotate(-20 45 78)"/>
+                    <g class="mascot-hand-left">
+                        <ellipse cx="38" cy="95" rx="8" ry="10" fill="#CD853F"/>
+                        <circle cx="35" cy="96" r="2" fill="#8B4513"/>
+                        <circle cx="38" cy="98" r="2" fill="#8B4513"/>
+                        <circle cx="41" cy="96" r="2" fill="#8B4513"/>
+                    </g>
+                </g>
+                <g class="mascot-right-arm">
+                    <ellipse cx="95" cy="78" rx="10" ry="22" fill="#8B4513" transform="rotate(20 95 78)"/>
+                    <g class="mascot-hand-right">
+                        <ellipse cx="102" cy="95" rx="8" ry="10" fill="#CD853F"/>
+                        <circle cx="99" cy="96" r="2" fill="#8B4513"/>
+                        <circle cx="102" cy="98" r="2" fill="#8B4513"/>
+                        <circle cx="105" cy="96" r="2" fill="#8B4513"/>
+                    </g>
+                </g>
+                <g class="mascot-head" transform-origin="70 50">
+                    <circle cx="70" cy="50" r="32" fill="#CD853F"/>
+                    <circle cx="45" cy="48" r="10" fill="#CD853F"/>
+                    <circle cx="95" cy="48" r="10" fill="#CD853F"/>
+                    <circle cx="45" cy="48" r="6" fill="#DEB887"/>
+                    <circle cx="95" cy="48" r="6" fill="#DEB887"/>
+                    <ellipse cx="70" cy="60" rx="22" ry="18" fill="#DEB887"/>
+                    <ellipse cx="58" cy="45" rx="6" ry="8" fill="white"/>
+                    <ellipse cx="82" cy="45" rx="6" ry="8" fill="white"/>
+                    <circle cx="58" cy="47" r="4" fill="#000"/>
+                    <circle cx="82" cy="47" r="4" fill="#000"/>
+                    <circle cx="59" cy="45" r="2" fill="#FFF"/>
+                    <circle cx="83" cy="45" r="2" fill="#FFF"/>
+                    <path d="M 52 38 Q 58 36 64 38" stroke="#8B4513" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    <path d="M 76 38 Q 82 36 88 38" stroke="#8B4513" stroke-width="2" fill="none" stroke-linecap="round"/>
+                    <ellipse cx="70" cy="55" rx="4" ry="5" fill="#8B4513"/>
+                    <circle cx="68" cy="54" r="1.5" fill="#000"/>
+                    <circle cx="72" cy="54" r="1.5" fill="#000"/>
+                    <path d="M 60 62 Q 70 67 80 62" stroke="#8B4513" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                    <circle cx="56" cy="62" r="2" fill="#CD853F" opacity="0.3"/>
+                    <circle cx="84" cy="62" r="2" fill="#CD853F" opacity="0.3"/>
+                </g>
+            </svg>
+            <div class="mascot-status" id="mascot-status"></div>
+        </div>
         <div class="chat-header">
             <h2 id="survey-title">Survey</h2>
             <button class="end-btn" onclick="endSurvey()">End Survey</button>
@@ -161,6 +289,16 @@ function addMessage(role, content) {
     el.textContent = content;
     document.getElementById('messages').appendChild(el);
     el.scrollIntoView({ behavior: 'smooth' });
+    return el;
+}
+
+function addStreamingMessage() {
+    const el = document.createElement('div');
+    el.className = 'msg assistant';
+    el.id = 'streaming-msg';
+    document.getElementById('messages').appendChild(el);
+    el.scrollIntoView({ behavior: 'smooth' });
+    return el;
 }
 
 function showTyping() {
@@ -170,11 +308,27 @@ function showTyping() {
     el.textContent = 'Thinking…';
     document.getElementById('messages').appendChild(el);
     el.scrollIntoView({ behavior: 'smooth' });
+    startMascotTyping();
 }
 
 function hideTyping() {
     const el = document.getElementById('typing');
     if (el) el.remove();
+    stopMascotTyping();
+}
+
+function startMascotTyping() {
+    const svg = document.getElementById('mascot-svg');
+    const status = document.getElementById('mascot-status');
+    if (svg) svg.classList.add('mascot-typing');
+    if (status) status.classList.add('active');
+}
+
+function stopMascotTyping() {
+    const svg = document.getElementById('mascot-svg');
+    const status = document.getElementById('mascot-status');
+    if (svg) svg.classList.remove('mascot-typing');
+    if (status) status.classList.remove('active');
 }
 
 async function joinSurvey() {
@@ -215,19 +369,50 @@ async function sendMessage() {
     showTyping();
 
     try {
-        const res = await fetch('/api/survey/chat', {
+        const res = await fetch('/api/survey/chat/stream', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ session_token: sessionToken, message: text }),
         });
-        const data = await res.json();
         hideTyping();
-        if (!res.ok) throw new Error(data.detail || 'Error');
-
-        addMessage('assistant', data.response);
-        if (data.is_complete) {
-            setTimeout(() => show('complete-screen'), 2000);
+        if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.detail || 'Error');
         }
+        const streamEl = addStreamingMessage();
+        streamEl.textContent = '';
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        if (data.t === 'chunk' && data.v) {
+                            streamEl.textContent += data.v;
+                            streamEl.scrollIntoView({ behavior: 'smooth' });
+                        } else if (data.t === 'done') {
+                            if (data.is_complete) setTimeout(() => show('complete-screen'), 2000);
+                        } else if (data.t === 'error') {
+                            streamEl.textContent = 'Error: ' + (data.v || 'Unknown');
+                        }
+                    } catch (_) {}
+                }
+            }
+        }
+        if (buffer.startsWith('data: ')) {
+            try {
+                const data = JSON.parse(buffer.slice(6));
+                if (data.t === 'done' && data.is_complete) setTimeout(() => show('complete-screen'), 2000);
+            } catch (_) {}
+        }
+        streamEl.id = '';
     } catch (e) {
         hideTyping();
         addMessage('system', 'Error: ' + e.message);
@@ -253,6 +438,16 @@ async function endSurvey() {
 document.getElementById('chat-input').addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Mascot typing when user types in chat (chat screen only)
+let mascotTypingTimeout;
+document.getElementById('chat-input').addEventListener('input', function() {
+    var container = document.getElementById('mascot-container');
+    if (!container || document.getElementById('chat-screen').style.display !== 'flex') return;
+    startMascotTyping();
+    clearTimeout(mascotTypingTimeout);
+    mascotTypingTimeout = setTimeout(stopMascotTyping, 500);
 });
 </script>
 </body>
