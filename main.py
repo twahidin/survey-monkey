@@ -119,6 +119,7 @@ class SurveyCreate(BaseModel):
     title: str
     topic: str
     system_prompt: str
+    facilitator_intro: Optional[str] = None
     survey_code: Optional[str] = None
     max_messages: int = 20
 
@@ -126,6 +127,7 @@ class SurveyUpdate(BaseModel):
     title: Optional[str] = None
     topic: Optional[str] = None
     system_prompt: Optional[str] = None
+    facilitator_intro: Optional[str] = None
     max_messages: Optional[int] = None
 
 class JoinSurveyRequest(BaseModel):
@@ -207,6 +209,7 @@ def list_surveys(
             "survey_code": s.survey_code,
             "status": s.status.value,
             "max_messages": s.max_messages,
+            "facilitator_intro": s.facilitator_intro or "",
             "created_at": s.created_at.isoformat(),
             "closed_at": s.closed_at.isoformat() if s.closed_at else None,
             "active_participants": s.active_participants_count,
@@ -231,6 +234,7 @@ def create_survey(
         title=req.title,
         topic=req.topic,
         system_prompt=req.system_prompt,
+        facilitator_intro=req.facilitator_intro or None,
         survey_code=code.upper(),
         max_messages=req.max_messages,
         admin_id=admin.id,
@@ -297,6 +301,22 @@ def reopen_survey(
     return {"ok": True}
 
 
+@app.delete("/api/surveys/{survey_id}")
+def delete_survey(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    db.query(AnalysisMessage).filter(AnalysisMessage.survey_id == survey_id).delete()
+    db.delete(survey)
+    db.commit()
+    return {"ok": True}
+
+
 # ══════════════════════════════════════════════════════════════════
 #  ADMIN - ANALYTICS
 # ══════════════════════════════════════════════════════════════════
@@ -346,6 +366,8 @@ def get_survey_results(
             "topic": survey.topic,
             "status": survey.status.value,
             "survey_code": survey.survey_code,
+            "system_prompt": survey.system_prompt,
+            "facilitator_intro": survey.facilitator_intro or "",
         },
         "stats": {
             "total_participants": len(survey.participants),
@@ -474,12 +496,20 @@ def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     db.add(participant)
     db.commit()
 
+    # Build system prompt: include facilitator intro so the bot uses it when greeting
+    system = survey.system_prompt
+    if survey.facilitator_intro and survey.facilitator_intro.strip():
+        system += (
+            "\n\n[When you first greet the participant, use this introduction (say it naturally):\n"
+            + survey.facilitator_intro.strip()
+            + "\n]"
+        )
     # Generate the opening message from Claude
     client = get_claude_client()
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
-        system=survey.system_prompt,
+        system=system,
         messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them and begin.)"}],
     )
     opening = response.content[0].text

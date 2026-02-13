@@ -48,6 +48,7 @@ class Survey(Base):
     title = Column(String(255), nullable=False)
     topic = Column(Text, nullable=False)
     system_prompt = Column(Text, nullable=False)
+    facilitator_intro = Column(Text, nullable=True)  # e.g. "My name is X, and I'm working with..."
     survey_code = Column(String(50), unique=True, nullable=False, index=True)
     status = Column(Enum(SurveyStatus), default=SurveyStatus.DRAFT, nullable=False)
     max_messages = Column(Integer, default=20)  # max back-and-forth before auto-close

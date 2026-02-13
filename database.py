@@ -22,8 +22,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
-    """Create all tables."""
+    """Create all tables and run any one-off migrations."""
     Base.metadata.create_all(bind=engine)
+    # Add facilitator_intro if missing (existing DBs)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text(
+            "ALTER TABLE surveys ADD COLUMN IF NOT EXISTS facilitator_intro TEXT"
+        ))
+        conn.commit()
 
 
 def get_db():

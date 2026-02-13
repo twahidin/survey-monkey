@@ -185,7 +185,7 @@
 <!-- ═══ DASHBOARD ═══ -->
 <div id="dashboard" class="hidden">
     <div class="topbar">
-        <h1>Survey Admin</h1>
+        <h1><a href="javascript:void(0)" onclick="showList()" style="color:inherit;text-decoration:none;cursor:pointer" title="Back to surveys">Survey Admin</a></h1>
         <div class="user-info">
             <span id="admin-name"></span>
             <button class="btn btn-sm btn-outline" onclick="doLogout()">Sign Out</button>
@@ -207,7 +207,9 @@
 
         <!-- Survey Detail -->
         <div id="detail-view" class="hidden">
-            <span class="back-link" onclick="showList()">&larr; Back to surveys</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+                <button type="button" class="btn btn-outline" onclick="showList()">&larr; Back to surveys (Home)</button>
+            </div>
             <div class="detail-header">
                 <h2 id="detail-title"></h2>
                 <span id="detail-badge"></span>
@@ -215,10 +217,11 @@
             </div>
             <div class="stats-bar" id="detail-stats"></div>
 
-            <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+            <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn btn-sm btn-danger" id="close-btn" onclick="closeSurvey()">Close Survey</button>
                 <button class="btn btn-sm btn-success hidden" id="reopen-btn" onclick="reopenSurvey()">Reopen Survey</button>
                 <button class="btn btn-sm btn-outline" onclick="refreshDetail()">Refresh</button>
+                <button class="btn btn-sm btn-danger" id="delete-btn" onclick="deleteSurvey()" style="margin-left:auto">Delete Survey</button>
             </div>
 
             <div class="tabs">
@@ -271,6 +274,10 @@
                         <textarea id="edit-prompt" rows="6"></textarea>
                     </div>
                     <div class="form-group">
+                        <label>Facilitator intro (your name &amp; intro — the bot says this when greeting)</label>
+                        <textarea id="edit-facilitator-intro" rows="3" placeholder="My name is [Your name], and I'm working with the EdTech team to gather valuable insights from educators like yourself about the Student Learning Space (SLS) platform."></textarea>
+                    </div>
+                    <div class="form-group">
                         <label>Max Messages per Participant</label>
                         <input id="edit-max" type="number" min="1" max="100">
                     </div>
@@ -296,6 +303,10 @@
         <div class="form-group">
             <label>System Prompt (instructions for the chatbot)</label>
             <textarea id="new-prompt" rows="6" placeholder="You are a friendly survey assistant. Your goal is to gather insights about the customer's experience with our product. Ask open-ended questions, follow up on interesting points, and be conversational."></textarea>
+        </div>
+        <div class="form-group">
+            <label>Facilitator intro (your name &amp; intro — the bot will say this when greeting)</label>
+            <textarea id="new-facilitator-intro" rows="3" placeholder="My name is [Your name], and I'm working with the EdTech team to gather valuable insights from educators like yourself about the Student Learning Space (SLS) platform."></textarea>
         </div>
         <div class="form-group">
             <label>Survey Code (optional — auto-generated if blank)</label>
@@ -430,13 +441,14 @@ async function createSurvey() {
             title: document.getElementById('new-title').value.trim(),
             topic: document.getElementById('new-topic').value.trim(),
             system_prompt: document.getElementById('new-prompt').value.trim(),
+            facilitator_intro: document.getElementById('new-facilitator-intro').value.trim() || undefined,
             survey_code: document.getElementById('new-code').value.trim() || undefined,
             max_messages: parseInt(document.getElementById('new-max').value) || 20,
         };
         if (!data.title || !data.topic || !data.system_prompt) throw new Error('Title, topic, and prompt are required');
         await api('/api/surveys', 'POST', data);
         closeCreateModal();
-        ['new-title','new-topic','new-prompt','new-code'].forEach(id => document.getElementById(id).value = '');
+        ['new-title','new-topic','new-prompt','new-facilitator-intro','new-code'].forEach(id => document.getElementById(id).value = '');
         document.getElementById('new-max').value = '20';
         loadSurveys();
     } catch (e) {
@@ -501,7 +513,8 @@ async function refreshDetail() {
     // Settings
     document.getElementById('edit-title').value = s.title;
     document.getElementById('edit-topic').value = s.topic;
-    // Need to fetch survey details for prompt - use the survey list data
+    document.getElementById('edit-prompt').value = s.system_prompt || '';
+    document.getElementById('edit-facilitator-intro').value = s.facilitator_intro || '';
     const surveys = await api('/api/surveys');
     const full = surveys.find(x => x.id === currentSurveyId);
     if (full) {
@@ -543,11 +556,22 @@ async function reopenSurvey() {
     refreshDetail();
 }
 
+async function deleteSurvey() {
+    if (!confirm('Permanently delete this survey? All participants and responses will be removed. This cannot be undone.')) return;
+    try {
+        await api(`/api/surveys/${currentSurveyId}`, 'DELETE');
+        showList();
+    } catch (e) {
+        alert('Failed to delete: ' + e.message);
+    }
+}
+
 async function saveSettings() {
     const data = {
         title: document.getElementById('edit-title').value.trim(),
         topic: document.getElementById('edit-topic').value.trim(),
         system_prompt: document.getElementById('edit-prompt').value.trim() || undefined,
+        facilitator_intro: document.getElementById('edit-facilitator-intro').value.trim() || undefined,
         max_messages: parseInt(document.getElementById('edit-max').value) || undefined,
     };
     await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
