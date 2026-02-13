@@ -382,7 +382,14 @@ async function api(url, method = 'GET', body = null) {
     const res = await fetch(url, opts);
     const data = await res.json();
     if (!res.ok) {
-        if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
+        if (res.status === 401) {
+            doLogout();
+            // Login endpoint returns 401 for bad credentials; others for expired/invalid token
+            const msg = (body && (body.username !== undefined || body.password !== undefined))
+                ? (data.detail || 'Invalid credentials')
+                : 'Session expired';
+            throw new Error(msg);
+        }
         throw new Error(data.detail || 'Request failed');
     }
     return data;

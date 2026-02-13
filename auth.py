@@ -58,3 +58,9 @@ def create_admin_user(db: Session, username: str, password: str) -> AdminUser:
     db.commit()
     db.refresh(admin)
     return admin
+
+
+def update_admin_password(db: Session, admin: AdminUser, new_password: str) -> None:
+    """Update an existing admin's password."""
+    admin.password_hash = hash_password(new_password)
+    db.commit()

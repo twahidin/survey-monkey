@@ -22,7 +22,7 @@ from models import (
 )
 from auth import (
     authenticate_admin, create_admin_user, create_access_token,
-    decode_token, hash_password,
+    decode_token, hash_password, update_admin_password,
 )
 
 app = FastAPI(title="Survey Chatbot", version="1.0.0")
@@ -34,17 +34,39 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ──────────────────────────── Startup ────────────────────────────
 
+def _wait_for_db(max_attempts: int = 10, delay: float = 2.0):
+    """Retry DB connection at startup (e.g. Postgres not ready yet on Railway)."""
+    import time
+    from sqlalchemy.exc import OperationalError
+    for attempt in range(max_attempts):
+        try:
+            init_db()
+            return
+        except OperationalError as e:
+            if attempt == max_attempts - 1:
+                raise
+            print(f"Database not ready (attempt {attempt + 1}/{max_attempts}), retrying in {delay}s...")
+            time.sleep(delay)
+
+
 @app.on_event("startup")
 def on_startup():
-    init_db()
-    # Create default admin if none exist
+    _wait_for_db()
+    # Ensure default admin from env vars exists and password matches (so Railway vars always work)
     db = next(get_db())
     try:
-        if db.query(AdminUser).count() == 0:
-            default_user = os.environ.get("DEFAULT_ADMIN_USER", "admin")
-            default_pass = os.environ.get("DEFAULT_ADMIN_PASS", "admin123")
+        default_user = os.environ.get("DEFAULT_ADMIN_USER", "admin")
+        default_pass = os.environ.get("DEFAULT_ADMIN_PASS", "admin123")
+        existing = db.query(AdminUser).filter(AdminUser.username == default_user).first()
+        if existing:
+            update_admin_password(db, existing, default_pass)
+            print(f"Updated password for admin: {default_user}")
+        elif db.query(AdminUser).count() == 0:
             create_admin_user(db, default_user, default_pass)
             print(f"Created default admin: {default_user}")
+        else:
+            create_admin_user(db, default_user, default_pass)
+            print(f"Created admin from env: {default_user}")
     finally:
         db.close()
 

@@ -24,11 +24,10 @@ railway init
 
 ## 3. Add PostgreSQL
 
-```bash
-railway add --database postgres
-```
+**Important:** The app service must have `DATABASE_URL` set. Add Postgres in the same project and connect it to your app.
 
-Or in the [Railway dashboard](https://railway.app/dashboard): open your project → **+ New** → **Database** → **PostgreSQL**. Railway will set `DATABASE_URL` automatically.
+- **Dashboard:** Open your project → **+ New** → **Database** → **PostgreSQL**. Then open your **app service** → **Variables** → ensure `DATABASE_URL` is present (Railway often injects it when both services are in the same project). If not, click **Add variable** → **Add reference** and select the Postgres service’s `DATABASE_URL`.
+- **CLI:** From the app directory, run `railway add --database postgres` (or add Postgres from the dashboard and redeploy so the app picks up the variable).
 
 ---
 
@@ -84,3 +83,17 @@ Pick the project and (if asked) the environment, then run **Add PostgreSQL** and
 - **Admin dashboard:** `https://your-app.up.railway.app/admin`
 
 Health check is at `/api/health` (used by Railway for restarts).
+
+---
+
+## Troubleshooting: "Connection refused" to localhost:5432
+
+This means the app is using the default database URL (localhost) because **`DATABASE_URL` is not set** for your app service.
+
+1. In the [Railway dashboard](https://railway.app/dashboard), open your **project**.
+2. Ensure you have a **PostgreSQL** service (if not, add one: **+ New** → **Database** → **PostgreSQL**).
+3. Open your **web/app service** (the one that runs the FastAPI app).
+4. Go to **Variables**. You should see `DATABASE_URL` (often added automatically when Postgres is in the same project). If it’s missing:
+   - Click **+ New variable** → **Add reference**.
+   - Choose the **PostgreSQL** service and the variable **DATABASE_URL**.
+5. **Redeploy** the app (e.g. **Deploy** → **Redeploy** or push a new commit) so it starts with `DATABASE_URL` set.
