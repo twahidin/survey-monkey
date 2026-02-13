@@ -1,5 +1,6 @@
 """Main FastAPI application - Survey Chatbot with Admin Dashboard."""
 
+import json
 import os
 import uuid
 import secrets
@@ -10,7 +11,7 @@ from typing import Optional
 import anthropic
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
@@ -30,6 +31,16 @@ if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+
+# Appended to survey system prompt to keep tone conversational and elicit more reflection
+CONVERSATIONAL_PROMPT = (
+    "\n\n[STYLE: Be warm and conversational, not formal. "
+    "Keep your replies relatively short so the participant does most of the talking. "
+    "Often ask brief follow-ups to draw out more thoughts (e.g. 'What made you think that?', 'Can you say a bit more?', 'How did that feel?'). "
+    "Reflect back what they share and invite elaboration. "
+    "Your goal is to elicit genuine reflection and richer responses, not to rush through questions.]"
+)
 
 
 # ──────────────────────────── Startup ────────────────────────────
@@ -438,7 +449,7 @@ def analyze_survey(
     # Call Claude
     client = get_claude_client()
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=CLAUDE_MODEL,
         max_tokens=2048,
         system=(
             "You are a survey data analyst. You have access to all the survey conversation data below. "
@@ -504,10 +515,11 @@ def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
             + survey.facilitator_intro.strip()
             + "\n]"
         )
+    system += CONVERSATIONAL_PROMPT
     # Generate the opening message from Claude
     client = get_claude_client()
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=CLAUDE_MODEL,
         max_tokens=1024,
         system=system,
         messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them and begin.)"}],
@@ -553,7 +565,7 @@ def survey_chat(req: ChatRequest, db: Session = Depends(get_db)):
     user_message_count = sum(1 for m in history if m["role"] == "user")
     near_limit = user_message_count >= participant.survey.max_messages
 
-    system = participant.survey.system_prompt
+    system = participant.survey.system_prompt + CONVERSATIONAL_PROMPT
     if near_limit:
         system += (
             "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
@@ -564,7 +576,7 @@ def survey_chat(req: ChatRequest, db: Session = Depends(get_db)):
     # Call Claude
     client = get_claude_client()
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=CLAUDE_MODEL,
         max_tokens=1024,
         system=system,
         messages=history,
@@ -588,6 +600,82 @@ def survey_chat(req: ChatRequest, db: Session = Depends(get_db)):
         "response": assistant_text,
         "is_complete": is_complete,
     }
+
+
+def _chat_stream_generator(
+    client, system: str, history: list, participant, survey, db, near_limit: bool
+):
+    """Yield SSE events: chunk events then a done event. Saves message and updates participant when stream ends."""
+    full_text = []
+    try:
+        with client.messages.stream(
+            model=CLAUDE_MODEL,
+            max_tokens=1024,
+            system=system,
+            messages=history,
+        ) as stream:
+            for text in stream.text_stream:
+                full_text.append(text)
+                yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
+        return
+    assistant_text = "".join(full_text)
+    # Save and possibly complete
+    db.add(ChatMessage(participant_id=participant.id, role="assistant", content=assistant_text))
+    is_complete = near_limit
+    if is_complete:
+        now = datetime.now(timezone.utc)
+        participant.status = ParticipantStatus.COMPLETED
+        participant.completed_at = now
+        participant.duration_seconds = (now - participant.started_at).total_seconds()
+    db.commit()
+    yield f"data: {json.dumps({'t': 'done', 'is_complete': is_complete})}\n\n"
+
+
+@app.post("/api/survey/chat/stream")
+def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
+    """Stream the assistant reply as SSE; saves message and returns is_complete in final event."""
+    participant = (
+        db.query(Participant)
+        .filter(Participant.session_token == req.session_token)
+        .options(joinedload(Participant.messages), joinedload(Participant.survey))
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if participant.status != ParticipantStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="This survey session has ended")
+    if participant.survey.status != SurveyStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="This survey has been closed")
+
+    db.add(ChatMessage(participant_id=participant.id, role="user", content=req.message))
+    db.commit()
+
+    msgs = sorted(participant.messages, key=lambda m: m.created_at)
+    history = [{"role": m.role, "content": m.content} for m in msgs]
+    history.append({"role": "user", "content": req.message})
+
+    user_message_count = sum(1 for m in history if m["role"] == "user")
+    near_limit = user_message_count >= participant.survey.max_messages
+
+    system = participant.survey.system_prompt + CONVERSATIONAL_PROMPT
+    if near_limit:
+        system += (
+            "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
+            "Thank them for their time, provide a brief summary of what you gathered, "
+            "and end the conversation warmly.]"
+        )
+
+    client = get_claude_client()
+    gen = _chat_stream_generator(
+        client, system, history, participant, participant.survey, db, near_limit
+    )
+    return StreamingResponse(
+        gen,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/survey/complete")
