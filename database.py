@@ -31,6 +31,16 @@ def init_db():
         conn.execute(text(
             "ALTER TABLE surveys ADD COLUMN IF NOT EXISTS facilitator_intro TEXT"
         ))
+        conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS survey_insights ("
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "survey_id UUID NOT NULL REFERENCES surveys(id), "
+            "insights_json TEXT NOT NULL, "
+            "generated_at TIMESTAMPTZ DEFAULT now())"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_survey_insights_survey_id ON survey_insights(survey_id)"
+        ))
         conn.commit()
 
 

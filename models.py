@@ -118,3 +118,12 @@ class AnalysisMessage(Base):
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class SurveyInsight(Base):
+    __tablename__ = "survey_insights"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    survey_id = Column(UUID(as_uuid=True), ForeignKey("surveys.id"), nullable=False, index=True)
+    insights_json = Column(Text, nullable=False)
+    generated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

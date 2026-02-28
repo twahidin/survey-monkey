@@ -19,7 +19,7 @@ from sqlalchemy import func
 from database import get_db, init_db
 from models import (
     Survey, SurveyStatus, Participant, ParticipantStatus,
-    ChatMessage, AdminUser, AnalysisMessage,
+    ChatMessage, AdminUser, AnalysisMessage, SurveyInsight,
 )
 from auth import (
     authenticate_admin, create_admin_user, create_access_token,
