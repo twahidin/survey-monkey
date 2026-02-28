@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import anthropic
+import httpx
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
@@ -114,6 +115,127 @@ def get_claude_client():
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
     return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+# ──────────────────────────── Tool-Use ────────────────────────────
+
+UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+
+SURVEY_TOOLS = [
+    {
+        "name": "show_image",
+        "description": "Show a relevant image to help the participant understand or engage with the topic. Use when visual context would enrich the conversation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query for finding a relevant image"},
+                "caption": {"type": "string", "description": "Optional caption to display with the image"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "show_buttons",
+        "description": "Present clickable option buttons instead of asking the participant to type. Use for questions with discrete answer choices (2-6 options).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question being asked"},
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string"},
+                            "value": {"type": "string"},
+                        },
+                        "required": ["label", "value"],
+                    },
+                    "description": "2-6 options to present as buttons",
+                },
+                "allow_multiple": {
+                    "type": "boolean",
+                    "description": "If true, participant can select multiple options",
+                },
+            },
+            "required": ["question", "options"],
+        },
+    },
+    {
+        "name": "show_video",
+        "description": "Show a relevant short video clip. Use sparingly, only when video would significantly aid understanding.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query for finding a relevant video"},
+                "caption": {"type": "string", "description": "Optional caption"},
+            },
+            "required": ["query"],
+        },
+    },
+]
+
+TOOL_USE_PROMPT = (
+    "\n\n[TOOLS: You have tools available to enrich the conversation. "
+    "Use show_buttons when asking questions with clear discrete choices (e.g., frequency, ratings, yes/no). "
+    "Use show_image when a visual would help the participant understand or connect with the topic. "
+    "Use show_video sparingly, only when a video clip would significantly help. "
+    "You can combine text with tool calls — write your message text AND call a tool in the same turn.]"
+)
+
+
+async def fetch_unsplash_image(query: str) -> dict:
+    """Fetch a relevant image from Unsplash. Returns {url, alt} or empty dict."""
+    if not UNSPLASH_ACCESS_KEY:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": query, "per_page": 1, "orientation": "landscape"},
+                headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("results"):
+                    photo = data["results"][0]
+                    return {
+                        "url": photo["urls"]["regular"],
+                        "alt": photo.get("alt_description", query),
+                    }
+    except Exception:
+        pass
+    return {}
+
+
+async def fetch_pexels_video(query: str) -> dict:
+    """Fetch a relevant video from Pexels. Returns {url, poster} or empty dict."""
+    if not PEXELS_API_KEY:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://api.pexels.com/videos/search",
+                params={"query": query, "per_page": 1},
+                headers={"Authorization": PEXELS_API_KEY},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("videos"):
+                    video = data["videos"][0]
+                    files = video.get("video_files", [])
+                    mp4 = next((f for f in files if f.get("quality") == "hd" and "mp4" in f.get("file_type", "")), None)
+                    if not mp4 and files:
+                        mp4 = files[0]
+                    if mp4:
+                        return {
+                            "url": mp4["link"],
+                            "poster": video.get("image", ""),
+                        }
+    except Exception:
+        pass
+    return {}
 
 
 # ──────────────────────────── Pydantic Schemas ────────────────────────────
