@@ -744,7 +744,7 @@ def regenerate_survey_insights(
 # ══════════════════════════════════════════════════════════════════
 
 @app.post("/api/survey/join")
-def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
+async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     survey = db.query(Survey).filter(Survey.survey_code == req.survey_code.upper()).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Invalid survey code")
@@ -769,24 +769,44 @@ def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
             + "\n]"
         )
     system += CONVERSATIONAL_PROMPT + TOOL_USE_PROMPT
-    # Generate the opening message from Claude
+    # Generate the opening message from Claude (with tool-use support)
     client = get_claude_client()
     response = client.messages.create(
         model=CLAUDE_MODEL,
         max_tokens=1024,
         system=system,
         messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them and begin.)"}],
+        tools=SURVEY_TOOLS,
     )
-    opening = response.content[0].text
+
+    # Process content blocks — extract text and tool events
+    text_parts = []
+    tool_events = []
+    for block in response.content:
+        if block.type == "text":
+            text_parts.append(block.text)
+        elif block.type == "tool_use":
+            events = await _process_tool_call(block.name, block.input)
+            tool_events.extend(events)
+
+    opening = "".join(text_parts)
+    if not opening and tool_events:
+        opening = "(presented interactive content)"
 
     # Save the opening message
     db.add(ChatMessage(participant_id=participant.id, role="assistant", content=opening))
+    if tool_events:
+        db.add(ChatMessage(
+            participant_id=participant.id, role="assistant",
+            content=f"[TOOL_EVENTS]{json.dumps(tool_events)}",
+        ))
     db.commit()
 
     return {
         "session_token": session_token,
         "survey_title": survey.title,
         "opening_message": opening,
+        "opening_events": tool_events,
     }
 
 

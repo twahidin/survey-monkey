@@ -534,7 +534,14 @@ async function joinSurvey() {
         document.getElementById('survey-title').textContent = data.survey_title;
         updateProgress();
         show('chat-screen');
-        addMessage('assistant', data.opening_message);
+        if (data.opening_message) addMessage('assistant', data.opening_message);
+        // Render any tool events from the opening (buttons, media)
+        if (data.opening_events && data.opening_events.length) {
+            data.opening_events.forEach(ev => {
+                if (ev.t === 'media') showMedia(ev);
+                else if (ev.t === 'buttons') renderButtons(ev);
+            });
+        }
     } catch (e) {
         err.textContent = e.message;
     } finally {
