@@ -454,6 +454,11 @@ function dismissMedia() {
 
 // ── Button Options ──
 function renderButtons(data) {
+    // Show the question text above the buttons
+    if (data.question) {
+        addMessage('assistant', data.question);
+    }
+
     const container = document.createElement('div');
     container.className = 'btn-options';
 
