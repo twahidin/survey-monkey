@@ -6,16 +6,19 @@ An AI-powered survey chatbot with an admin dashboard. Participants join via a **
 
 ### Survey Chatbot (`/`)
 - Participants enter a survey code to join
-- AI-driven conversational survey using Claude
+- AI-driven conversational survey using Claude with **agentic tool-use**
+- Claude can show **images** (Unsplash), **videos** (Pexels), and **interactive button options** (single/multi-select) during the conversation
+- Responsive media panel: side-by-side on desktop, dismissable top panel on mobile
 - Auto-completes after configurable message limit
-- Clean, mobile-friendly chat interface
+- Glassmorphism UI with animated completion screen
 
 ### Admin Dashboard (`/admin`)
 - **Auth**: Username/password login with JWT tokens
 - **Create surveys**: Set title, topic, system prompt, and survey code
+- **AI Insights**: Sentiment analysis, theme extraction, engagement scores — auto-generated and cached
 - **Live monitoring**: See active participants, completed count, and average completion time
 - **Conversation viewer**: Read every participant's full chat transcript
-- **Analysis chatbot**: AI-powered analysis of survey responses — ask questions about themes, sentiment, and insights
+- **Analysis chatbot**: AI-powered freeform analysis of survey responses
 - **Survey controls**: Close/reopen surveys, edit settings
 
 ## Tech Stack
@@ -46,6 +49,8 @@ In your Railway service settings, add:
 | `SECRET_KEY` | A random string for JWT signing (e.g. `openssl rand -hex 32`) |
 | `DEFAULT_ADMIN_USER` | Initial admin username (default: `admin`) |
 | `DEFAULT_ADMIN_PASS` | Initial admin password (default: `admin123`) |
+| `UNSPLASH_ACCESS_KEY` | *(Optional)* Unsplash API key for images in chat |
+| `PEXELS_API_KEY` | *(Optional)* Pexels API key for videos in chat |
 
 > `DATABASE_URL` is auto-provided by Railway's PostgreSQL addon.
 
