@@ -637,7 +637,7 @@ def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
             + survey.facilitator_intro.strip()
             + "\n]"
         )
-    system += CONVERSATIONAL_PROMPT
+    system += CONVERSATIONAL_PROMPT + TOOL_USE_PROMPT
     # Generate the opening message from Claude
     client = get_claude_client()
     response = client.messages.create(
@@ -724,40 +724,96 @@ def survey_chat(req: ChatRequest, db: Session = Depends(get_db)):
     }
 
 
-def _chat_stream_generator(
-    client, system: str, history: list, participant, survey, db, near_limit: bool
+async def _process_tool_call(tool_name: str, tool_input: dict) -> list:
+    """Process a tool call and return SSE event dicts to send to the frontend."""
+    events = []
+    if tool_name == "show_image":
+        media = await fetch_unsplash_image(tool_input["query"])
+        if media:
+            events.append({
+                "t": "media", "type": "image",
+                "url": media["url"], "alt": media.get("alt", ""),
+                "caption": tool_input.get("caption", ""),
+            })
+    elif tool_name == "show_video":
+        media = await fetch_pexels_video(tool_input["query"])
+        if media:
+            events.append({
+                "t": "media", "type": "video",
+                "url": media["url"], "poster": media.get("poster", ""),
+                "caption": tool_input.get("caption", ""),
+            })
+    elif tool_name == "show_buttons":
+        events.append({
+            "t": "buttons",
+            "question": tool_input.get("question", ""),
+            "options": tool_input.get("options", []),
+            "allow_multiple": tool_input.get("allow_multiple", False),
+        })
+    return events
+
+
+async def _chat_stream_generator_v2(
+    client, system: str, history: list, participant, db, near_limit: bool
 ):
-    """Yield SSE events: chunk events then a done event. Saves message and updates participant when stream ends."""
+    """Stream text + tool results as SSE events."""
     full_text = []
+    tool_events = []
+
     try:
-        with client.messages.stream(
+        response = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=1024,
             system=system,
             messages=history,
-        ) as stream:
-            for text in stream.text_stream:
+            tools=SURVEY_TOOLS,
+        )
+
+        for block in response.content:
+            if block.type == "text":
+                text = block.text
                 full_text.append(text)
-                yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
+                chunk_size = 12
+                for i in range(0, len(text), chunk_size):
+                    chunk = text[i:i + chunk_size]
+                    yield f"data: {json.dumps({'t': 'chunk', 'v': chunk})}\n\n"
+            elif block.type == "tool_use":
+                events = await _process_tool_call(block.name, block.input)
+                tool_events.extend(events)
+
+        for event in tool_events:
+            yield f"data: {json.dumps(event)}\n\n"
+
     except Exception as e:
         yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
         return
+
     assistant_text = "".join(full_text)
-    # Save and possibly complete
+    if not assistant_text and tool_events:
+        assistant_text = "(presented interactive content)"
+
     db.add(ChatMessage(participant_id=participant.id, role="assistant", content=assistant_text))
+
+    if tool_events:
+        db.add(ChatMessage(
+            participant_id=participant.id, role="assistant",
+            content=f"[TOOL_EVENTS]{json.dumps(tool_events)}",
+        ))
+
     is_complete = near_limit
     if is_complete:
         now = datetime.now(timezone.utc)
         participant.status = ParticipantStatus.COMPLETED
         participant.completed_at = now
         participant.duration_seconds = (now - participant.started_at).total_seconds()
+
     db.commit()
     yield f"data: {json.dumps({'t': 'done', 'is_complete': is_complete})}\n\n"
 
 
 @app.post("/api/survey/chat/stream")
-def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
-    """Stream the assistant reply as SSE; saves message and returns is_complete in final event."""
+async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
+    """Stream the assistant reply as SSE with tool-use support."""
     participant = (
         db.query(Participant)
         .filter(Participant.session_token == req.session_token)
@@ -775,23 +831,27 @@ def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     db.commit()
 
     msgs = sorted(participant.messages, key=lambda m: m.created_at)
-    history = [{"role": m.role, "content": m.content} for m in msgs]
+    history = [
+        {"role": m.role, "content": m.content}
+        for m in msgs
+        if not m.content.startswith("[TOOL_EVENTS]")
+    ]
     history.append({"role": "user", "content": req.message})
 
     user_message_count = sum(1 for m in history if m["role"] == "user")
     near_limit = user_message_count >= participant.survey.max_messages
 
-    system = participant.survey.system_prompt + CONVERSATIONAL_PROMPT
+    system = participant.survey.system_prompt + CONVERSATIONAL_PROMPT + TOOL_USE_PROMPT
     if near_limit:
         system += (
             "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
             "Thank them for their time, provide a brief summary of what you gathered, "
-            "and end the conversation warmly.]"
+            "and end the conversation warmly. Do not use tools in this final message.]"
         )
 
     client = get_claude_client()
-    gen = _chat_stream_generator(
-        client, system, history, participant, participant.survey, db, near_limit
+    gen = _chat_stream_generator_v2(
+        client, system, history, participant, db, near_limit
     )
     return StreamingResponse(
         gen,
