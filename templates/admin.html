@@ -7,158 +7,254 @@
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            --bg: #f1f5f9; --surface: #ffffff; --primary: #4f46e5;
-            --primary-hover: #4338ca; --text: #1e293b; --muted: #64748b;
-            --border: #e2e8f0; --success: #10b981; --danger: #ef4444;
-            --warning: #f59e0b; --radius: 12px;
+            --glass: rgba(255,255,255,0.55);
+            --glass-border: rgba(255,255,255,0.3);
+            --glass-strong: rgba(255,255,255,0.75);
+            --blur: 20px;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-end: #8b5cf6;
+            --text: #1e1b4b;
+            --muted: #6b7280;
+            --border: rgba(255,255,255,0.35);
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --radius: 16px;
+            --radius-sm: 10px;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg); color: var(--text); min-height: 100vh;
+            background: linear-gradient(135deg, #e8f0fe 0%, #f0e6ff 50%, #e8f0fe 100%);
+            color: var(--text); min-height: 100vh;
         }
         .hidden { display: none !important; }
 
+        /* Orbs */
+        .orb { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; z-index: 0; animation: float 20s ease-in-out infinite; }
+        .orb-1 { width: 400px; height: 400px; background: #c4b5fd; top: -100px; right: -100px; }
+        .orb-2 { width: 350px; height: 350px; background: #93c5fd; bottom: -80px; left: -80px; animation-delay: -7s; }
+        @keyframes float { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(20px,-15px); } }
+
         /* ── Auth ── */
-        .auth-wrapper {
-            display: flex; align-items: center; justify-content: center;
-            min-height: 100vh; padding: 16px;
-        }
+        .auth-wrapper { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; position: relative; z-index: 1; }
         .auth-card {
-            background: var(--surface); border-radius: var(--radius);
-            box-shadow: 0 4px 24px rgba(0,0,0,.06); padding: 40px 36px;
-            width: 100%; max-width: 400px; text-align: center;
+            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border); border-radius: var(--radius);
+            padding: 40px 36px; width: 100%; max-width: 400px; text-align: center;
+            box-shadow: 0 8px 32px rgba(99,102,241,0.08);
         }
-        .auth-card h1 { font-size: 1.5rem; margin-bottom: 4px; }
-        .auth-card .sub { color: var(--muted); margin-bottom: 28px; font-size: .9rem; }
+        .auth-card h1 { font-size: 1.4rem; margin-bottom: 4px; }
+        .auth-card .sub { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
         .form-group { margin-bottom: 16px; text-align: left; }
-        .form-group label { font-size: .85rem; font-weight: 600; display: block; margin-bottom: 4px; }
+        .form-group label { font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px; }
         .form-group input, .form-group textarea, .form-group select {
-            width: 100%; padding: 10px 12px; border: 2px solid var(--border);
-            border-radius: 8px; font-size: .95rem; outline: none; font-family: inherit;
+            width: 100%; padding: 10px 12px; background: rgba(255,255,255,0.5);
+            border: 1.5px solid var(--border); border-radius: 8px;
+            font-size: 0.93rem; outline: none; font-family: inherit; transition: border-color 0.2s;
         }
         .form-group input:focus, .form-group textarea:focus { border-color: var(--primary); }
         .btn {
-            display: inline-block; padding: 10px 24px; font-size: .95rem; font-weight: 600;
+            display: inline-block; padding: 10px 24px; font-size: 0.93rem; font-weight: 600;
             border: none; border-radius: 8px; cursor: pointer;
-            background: var(--primary); color: #fff; transition: background .15s;
+            background: linear-gradient(135deg, var(--primary), var(--primary-end)); color: #fff;
+            transition: transform 0.15s, box-shadow 0.15s;
         }
-        .btn:hover { background: var(--primary-hover); }
-        .btn:disabled { opacity: .5; cursor: not-allowed; }
-        .btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
-        .btn-outline:hover { background: var(--primary); color: #fff; }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.25); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-outline { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); }
+        .btn-outline:hover { background: rgba(99,102,241,0.08); transform: translateY(-1px); box-shadow: none; }
         .btn-danger { background: var(--danger); }
-        .btn-danger:hover { background: #dc2626; }
+        .btn-danger:hover { box-shadow: 0 4px 16px rgba(239,68,68,0.25); }
         .btn-success { background: var(--success); }
-        .btn-sm { padding: 6px 14px; font-size: .85rem; }
-        .error { color: var(--danger); margin-top: 8px; font-size: .85rem; }
-        .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: .9rem; text-decoration: underline; }
+        .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+        .error { color: var(--danger); margin-top: 8px; font-size: 0.82rem; }
+        .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 0.88rem; text-decoration: underline; }
 
         /* ── Layout ── */
         .topbar {
-            background: var(--surface); padding: 12px 28px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.05); display: flex;
-            align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10;
+            background: var(--glass-strong); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+            border-bottom: 1px solid var(--glass-border);
+            padding: 12px 28px; display: flex; align-items: center;
+            justify-content: space-between; position: sticky; top: 0; z-index: 10;
         }
-        .topbar h1 { font-size: 1.15rem; }
+        .topbar h1 { font-size: 1.1rem; }
         .topbar .user-info { display: flex; align-items: center; gap: 12px; }
-        .main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+        .main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; position: relative; z-index: 1; }
 
-        /* ── Cards ── */
-        .card {
-            background: var(--surface); border-radius: var(--radius);
-            box-shadow: 0 2px 12px rgba(0,0,0,.04); padding: 24px; margin-bottom: 20px;
+        /* ── Glass Card ── */
+        .glass-card {
+            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border); border-radius: var(--radius);
+            padding: 24px; margin-bottom: 20px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.04);
         }
-        .card h3 { margin-bottom: 16px; }
+        .glass-card h3 { margin-bottom: 16px; font-size: 1rem; }
 
-        /* ── Survey List ── */
-        .survey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+        /* ── Survey Grid ── */
+        .survey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
         .survey-card {
-            background: var(--surface); border-radius: var(--radius);
-            box-shadow: 0 2px 12px rgba(0,0,0,.04); padding: 20px;
-            cursor: pointer; transition: box-shadow .15s; border: 2px solid transparent;
+            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border); border-radius: var(--radius);
+            padding: 20px; cursor: pointer; transition: all 0.2s;
         }
-        .survey-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); border-color: var(--primary); }
-        .survey-card h3 { font-size: 1.05rem; margin-bottom: 6px; }
-        .survey-card .code { font-family: monospace; font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+        .survey-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.12); border-color: var(--primary); }
+        .survey-card h3 { font-size: 1rem; margin-bottom: 6px; }
+        .survey-card .code { font-family: monospace; font-size: 1.05rem; font-weight: 700; color: var(--primary); }
         .badge {
             display: inline-block; padding: 2px 10px; border-radius: 99px;
-            font-size: .75rem; font-weight: 700; text-transform: uppercase;
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
         }
-        .badge-active { background: #d1fae5; color: #065f46; }
-        .badge-closed { background: #fee2e2; color: #991b1b; }
-        .badge-draft { background: #e0e7ff; color: #3730a3; }
+        .badge-active { background: rgba(16,185,129,0.15); color: #065f46; }
+        .badge-closed { background: rgba(239,68,68,0.15); color: #991b1b; }
+        .badge-draft { background: rgba(99,102,241,0.15); color: #3730a3; }
         .stats-row { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
         .stat { text-align: center; }
-        .stat .num { font-size: 1.3rem; font-weight: 700; }
-        .stat .lbl { font-size: .75rem; color: var(--muted); }
+        .stat .num { font-size: 1.2rem; font-weight: 700; }
+        .stat .lbl { font-size: 0.72rem; color: var(--muted); }
 
         /* ── Detail View ── */
-        .back-link { color: var(--primary); cursor: pointer; font-weight: 600; margin-bottom: 16px; display: inline-block; }
         .detail-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-        .detail-header h2 { flex: 1; }
-        .stats-bar { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+        .detail-header h2 { flex: 1; font-size: 1.2rem; }
+        .stats-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
         .stat-box {
-            background: var(--bg); border-radius: 10px; padding: 16px 24px; text-align: center; min-width: 120px;
+            background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+            padding: 16px 22px; text-align: center; min-width: 110px;
         }
-        .stat-box .num { font-size: 1.6rem; font-weight: 700; color: var(--primary); }
-        .stat-box .lbl { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+        .stat-box .num { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+        .stat-box .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
 
         /* ── Tabs ── */
-        .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+        .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
         .tab {
-            padding: 10px 20px; font-weight: 600; cursor: pointer;
+            padding: 10px 18px; font-weight: 600; cursor: pointer;
             border-bottom: 3px solid transparent; color: var(--muted);
-            transition: all .15s; background: none; border-top: none; border-left: none; border-right: none;
-            font-size: .95rem;
+            transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none;
+            font-size: 0.9rem; white-space: nowrap;
         }
         .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* ── Participant list ── */
-        .participant-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-        .participant-table th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); font-size: .8rem; color: var(--muted); text-transform: uppercase; }
-        .participant-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-        .participant-table tr { cursor: pointer; }
-        .participant-table tr:hover { background: var(--bg); }
+        /* ── Insights ── */
+        .insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        @media (max-width: 700px) { .insights-grid { grid-template-columns: 1fr; } }
+
+        .sentiment-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .sentiment-bar .label { width: 70px; font-size: 0.82rem; font-weight: 600; }
+        .sentiment-bar .bar-bg {
+            flex: 1; height: 24px; border-radius: 12px; background: rgba(0,0,0,0.06); overflow: hidden;
+        }
+        .sentiment-bar .bar-fill {
+            height: 100%; border-radius: 12px; transition: width 0.5s ease;
+            display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
+            font-size: 0.72rem; font-weight: 700; color: #fff; min-width: 0;
+        }
+        .bar-positive { background: linear-gradient(90deg, #10b981, #34d399); }
+        .bar-neutral { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .bar-negative { background: linear-gradient(90deg, #ef4444, #f87171); }
+
+        .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .theme-item:last-child { border-bottom: none; }
+        .theme-rank { width: 24px; height: 24px; border-radius: 6px; background: rgba(99,102,241,0.1); color: var(--primary); font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .theme-name { flex: 1; font-size: 0.88rem; font-weight: 500; }
+        .theme-count { font-size: 0.78rem; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.04); padding: 2px 8px; border-radius: 99px; }
+
+        .engagement-histogram { display: flex; align-items: flex-end; gap: 4px; height: 100px; padding-top: 10px; }
+        .histogram-bar {
+            flex: 1; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-end));
+            transition: height 0.5s ease; min-height: 2px; position: relative;
+        }
+        .histogram-bar .bar-label {
+            position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+            font-size: 0.65rem; color: var(--muted);
+        }
+
+        /* ── Tables ── */
+        .participant-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .participant-table th {
+            text-align: left; padding: 10px 12px; border-bottom: 2px solid rgba(0,0,0,0.08);
+            font-size: 0.75rem; color: var(--muted); text-transform: uppercase; cursor: pointer;
+            user-select: none; white-space: nowrap;
+        }
+        .participant-table th:hover { color: var(--primary); }
+        .participant-table td { padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.04); }
+        .participant-table tr { cursor: pointer; transition: background 0.15s; }
+        .participant-table tr:hover { background: rgba(99,102,241,0.04); }
+        .sentiment-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-positive { background: var(--success); }
+        .dot-neutral { background: var(--warning); }
+        .dot-negative { background: var(--danger); }
+        .engagement-badge { font-size: 0.78rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+        .eng-high { background: rgba(16,185,129,0.15); color: #065f46; }
+        .eng-mid { background: rgba(245,158,11,0.15); color: #92400e; }
+        .eng-low { background: rgba(239,68,68,0.15); color: #991b1b; }
 
         /* ── Conversation viewer ── */
-        .convo-viewer { max-height: 500px; overflow-y: auto; padding: 16px; background: var(--bg); border-radius: 10px; }
+        .convo-viewer {
+            max-height: 500px; overflow-y: auto; padding: 16px;
+            background: rgba(255,255,255,0.4); border-radius: var(--radius-sm);
+        }
         .convo-msg { margin-bottom: 10px; }
-        .convo-msg .role { font-weight: 700; font-size: .8rem; text-transform: uppercase; color: var(--muted); }
-        .convo-msg .text { margin-top: 2px; white-space: pre-wrap; line-height: 1.5; }
+        .convo-msg .role { font-weight: 700; font-size: 0.75rem; text-transform: uppercase; color: var(--muted); }
+        .convo-msg .text { margin-top: 2px; white-space: pre-wrap; line-height: 1.5; font-size: 0.9rem; }
 
         /* ── Analysis Chat ── */
         .analysis-chat { display: flex; flex-direction: column; height: 480px; }
-        .analysis-messages { flex: 1; overflow-y: auto; padding: 16px; background: var(--bg); border-radius: 10px 10px 0 0; display: flex; flex-direction: column; gap: 10px; }
-        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; }
-        .analysis-msg.user { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .analysis-msg.assistant { background: var(--surface); align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
-        .analysis-input-area { display: flex; gap: 8px; padding: 12px; background: var(--surface); border-radius: 0 0 10px 10px; border-top: 1px solid var(--border); }
-        .analysis-input-area input { flex: 1; padding: 10px 12px; border: 2px solid var(--border); border-radius: 8px; outline: none; font-size: .9rem; }
+        .analysis-messages {
+            flex: 1; overflow-y: auto; padding: 16px;
+            background: rgba(255,255,255,0.3); border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 0.88rem; line-height: 1.5; white-space: pre-wrap; }
+        .analysis-msg.user {
+            background: linear-gradient(135deg, var(--primary), var(--primary-end));
+            color: #fff; align-self: flex-end; border-bottom-right-radius: 4px;
+        }
+        .analysis-msg.assistant {
+            background: var(--glass-strong); backdrop-filter: blur(12px);
+            align-self: flex-start; border-bottom-left-radius: 4px;
+            border: 1px solid var(--glass-border);
+        }
+        .analysis-input-area {
+            display: flex; gap: 8px; padding: 12px;
+            background: var(--glass-strong); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+            border-top: 1px solid var(--glass-border);
+        }
+        .analysis-input-area input {
+            flex: 1; padding: 10px 12px; background: rgba(255,255,255,0.5);
+            border: 1.5px solid var(--border); border-radius: 8px; outline: none; font-size: 0.88rem;
+        }
         .analysis-input-area input:focus { border-color: var(--primary); }
 
         /* ── Modal ── */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
             z-index: 100; padding: 16px;
         }
         .modal {
-            background: var(--surface); border-radius: var(--radius);
+            background: var(--glass-strong); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border); border-radius: var(--radius);
             padding: 32px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
         }
-        .modal h2 { margin-bottom: 20px; }
+        .modal h2 { margin-bottom: 20px; font-size: 1.15rem; }
 
         @media (max-width: 600px) {
-            .stats-bar { gap: 12px; }
+            .stats-bar { gap: 10px; }
             .stat-box { min-width: 80px; padding: 12px; }
+            .topbar { padding: 12px 16px; }
+            .main { padding: 20px 12px; }
         }
     </style>
 </head>
 <body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
 
-<!-- ═══ AUTH SCREEN ═══ -->
+<!-- AUTH SCREEN -->
 <div id="auth-screen" class="auth-wrapper">
     <div class="auth-card">
         <h1>Survey Admin</h1>
@@ -170,7 +266,7 @@
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input id="auth-pass" type="password" placeholder="••••••••"
+                <input id="auth-pass" type="password" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;"
                        onkeydown="if(event.key==='Enter')doLogin()">
             </div>
             <button class="btn" style="width:100%;margin-top:8px" onclick="doLogin()">Sign In</button>
@@ -182,12 +278,12 @@
     </div>
 </div>
 
-<!-- ═══ DASHBOARD ═══ -->
+<!-- DASHBOARD -->
 <div id="dashboard" class="hidden">
     <div class="topbar">
-        <h1><a href="javascript:void(0)" onclick="showList()" style="color:inherit;text-decoration:none;cursor:pointer" title="Back to surveys">Survey Admin</a></h1>
+        <h1><a href="javascript:void(0)" onclick="showList()" style="color:inherit;text-decoration:none;cursor:pointer">Survey Admin</a></h1>
         <div class="user-info">
-            <span id="admin-name"></span>
+            <span id="admin-name" style="font-size:0.88rem;color:var(--muted)"></span>
             <button class="btn btn-sm btn-outline" onclick="doLogout()">Sign Out</button>
         </div>
     </div>
@@ -208,58 +304,103 @@
         <!-- Survey Detail -->
         <div id="detail-view" class="hidden">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-                <button type="button" class="btn btn-outline" onclick="showList()">&larr; Back to surveys (Home)</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="showList()">&larr; Back</button>
             </div>
             <div class="detail-header">
                 <h2 id="detail-title"></h2>
                 <span id="detail-badge"></span>
-                <span id="detail-code" style="font-family:monospace;font-size:1.1rem;font-weight:700;color:var(--primary)"></span>
+                <span id="detail-code" style="font-family:monospace;font-size:1.05rem;font-weight:700;color:var(--primary)"></span>
             </div>
             <div class="stats-bar" id="detail-stats"></div>
 
             <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 <button class="btn btn-sm btn-danger" id="close-btn" onclick="closeSurvey()">Close Survey</button>
-                <button class="btn btn-sm btn-success hidden" id="reopen-btn" onclick="reopenSurvey()">Reopen Survey</button>
+                <button class="btn btn-sm btn-success hidden" id="reopen-btn" onclick="reopenSurvey()">Reopen</button>
                 <button class="btn btn-sm btn-outline" onclick="refreshDetail()">Refresh</button>
-                <button class="btn btn-sm btn-danger" id="delete-btn" onclick="deleteSurvey()" style="margin-left:auto">Delete Survey</button>
+                <button class="btn btn-sm btn-danger" id="delete-btn" onclick="deleteSurvey()" style="margin-left:auto">Delete</button>
             </div>
 
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('participants',this)">Participants</button>
+                <button class="tab active" onclick="switchTab('insights',this)">Insights</button>
+                <button class="tab" onclick="switchTab('participants',this)">Participants</button>
                 <button class="tab" onclick="switchTab('conversation',this)">Conversations</button>
                 <button class="tab" onclick="switchTab('analysis',this)">Analysis Chat</button>
                 <button class="tab" onclick="switchTab('settings',this)">Settings</button>
             </div>
 
-            <div class="tab-content active" id="tab-participants">
-                <table class="participant-table">
-                    <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Started</th></tr></thead>
-                    <tbody id="participant-tbody"></tbody>
-                </table>
+            <!-- Insights Tab -->
+            <div class="tab-content active" id="tab-insights">
+                <div id="insights-loading" style="text-align:center;padding:40px;color:var(--muted)">Loading insights...</div>
+                <div id="insights-content" class="hidden">
+                    <div class="insights-grid">
+                        <div class="glass-card">
+                            <h3>Sentiment Overview</h3>
+                            <div id="sentiment-chart"></div>
+                        </div>
+                        <div class="glass-card">
+                            <h3>Top Themes</h3>
+                            <div id="themes-list"></div>
+                        </div>
+                    </div>
+                    <div class="glass-card" style="margin-top:16px">
+                        <h3>Engagement Distribution</h3>
+                        <div id="engagement-chart"></div>
+                    </div>
+                    <div class="glass-card" style="margin-top:16px">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                            <h3 style="margin-bottom:0">Participant Details</h3>
+                            <button class="btn btn-sm btn-outline" onclick="regenerateInsights()">Regenerate</button>
+                        </div>
+                        <div style="overflow-x:auto">
+                            <table class="participant-table" id="insights-table">
+                                <thead><tr>
+                                    <th onclick="sortInsightsTable('id')">ID</th>
+                                    <th onclick="sortInsightsTable('sentiment')">Sentiment</th>
+                                    <th onclick="sortInsightsTable('engagement')">Engagement</th>
+                                    <th>Themes</th>
+                                </tr></thead>
+                                <tbody id="insights-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
+            <!-- Participants Tab -->
+            <div class="tab-content" id="tab-participants">
+                <div style="overflow-x:auto">
+                    <table class="participant-table">
+                        <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Started</th></tr></thead>
+                        <tbody id="participant-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Conversations Tab -->
             <div class="tab-content" id="tab-conversation">
-                <p style="color:var(--muted);margin-bottom:12px">Click a participant above, or select one:</p>
-                <select id="convo-select" onchange="showConversation(this.value)" style="padding:8px 12px;border:2px solid var(--border);border-radius:8px;margin-bottom:16px;font-size:.9rem"></select>
+                <p style="color:var(--muted);margin-bottom:12px;font-size:0.88rem">Select a participant:</p>
+                <select id="convo-select" onchange="showConversation(this.value)" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:16px;font-size:0.88rem;background:rgba(255,255,255,0.5)"></select>
                 <div class="convo-viewer" id="convo-viewer"></div>
             </div>
 
+            <!-- Analysis Chat Tab -->
             <div class="tab-content" id="tab-analysis">
-                <p style="color:var(--muted);margin-bottom:12px;font-size:.9rem">
-                    Chat with AI to analyze survey responses. Ask about themes, sentiment, insights, etc.
+                <p style="color:var(--muted);margin-bottom:12px;font-size:0.85rem">
+                    Chat with AI to analyze survey responses. Ask about themes, sentiment, insights.
                 </p>
                 <div class="analysis-chat">
                     <div class="analysis-messages" id="analysis-messages"></div>
                     <div class="analysis-input-area">
-                        <input id="analysis-input" placeholder="Ask about survey results…"
+                        <input id="analysis-input" placeholder="Ask about survey results..."
                                onkeydown="if(event.key==='Enter')sendAnalysis()">
                         <button class="btn btn-sm" id="analysis-send" onclick="sendAnalysis()">Send</button>
                     </div>
                 </div>
             </div>
 
+            <!-- Settings Tab -->
             <div class="tab-content" id="tab-settings">
-                <div class="card">
+                <div class="glass-card">
                     <h3>Survey Settings</h3>
                     <div class="form-group">
                         <label>Title</label>
@@ -274,8 +415,8 @@
                         <textarea id="edit-prompt" rows="6"></textarea>
                     </div>
                     <div class="form-group">
-                        <label>Facilitator intro (your name &amp; intro — the bot says this when greeting)</label>
-                        <textarea id="edit-facilitator-intro" rows="3" placeholder="My name is [Your name], and I'm working with the EdTech team to gather valuable insights from educators like yourself about the Student Learning Space (SLS) platform."></textarea>
+                        <label>Facilitator intro</label>
+                        <textarea id="edit-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
                     </div>
                     <div class="form-group">
                         <label>Max Messages per Participant</label>
@@ -288,7 +429,7 @@
     </div>
 </div>
 
-<!-- ═══ CREATE MODAL ═══ -->
+<!-- CREATE MODAL -->
 <div id="create-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCreateModal()">
     <div class="modal">
         <h2>Create New Survey</h2>
@@ -302,14 +443,14 @@
         </div>
         <div class="form-group">
             <label>System Prompt (instructions for the chatbot)</label>
-            <textarea id="new-prompt" rows="6" placeholder="You are a friendly survey assistant. Your goal is to gather insights about the customer's experience with our product. Ask open-ended questions, follow up on interesting points, and be conversational."></textarea>
+            <textarea id="new-prompt" rows="6" placeholder="You are a friendly survey assistant..."></textarea>
         </div>
         <div class="form-group">
-            <label>Facilitator intro (your name &amp; intro — the bot will say this when greeting)</label>
-            <textarea id="new-facilitator-intro" rows="3" placeholder="My name is [Your name], and I'm working with the EdTech team to gather valuable insights from educators like yourself about the Student Learning Space (SLS) platform."></textarea>
+            <label>Facilitator intro (your name &amp; intro)</label>
+            <textarea id="new-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
         </div>
         <div class="form-group">
-            <label>Survey Code (optional — auto-generated if blank)</label>
+            <label>Survey Code (optional)</label>
             <input id="new-code" placeholder="MYCODE" maxlength="10" style="text-transform:uppercase">
         </div>
         <div class="form-group">
@@ -328,7 +469,10 @@
 let token = localStorage.getItem('admin_token');
 let currentSurveyId = null;
 let currentResults = null;
+let currentInsights = null;
 let isRegister = false;
+let insightsSortCol = null;
+let insightsSortAsc = true;
 
 // ── Auth ──
 function toggleAuthMode() {
@@ -385,9 +529,7 @@ function showDashboard() {
 
 // ── API helper ──
 async function api(url, method = 'GET', body = null) {
-    const opts = {
-        method, headers: { 'Content-Type': 'application/json' },
-    };
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);
@@ -395,7 +537,6 @@ async function api(url, method = 'GET', body = null) {
     if (!res.ok) {
         if (res.status === 401) {
             doLogout();
-            // Login endpoint returns 401 for bad credentials; others for expired/invalid token
             const msg = (body && (body.username !== undefined || body.password !== undefined))
                 ? (data.detail || 'Invalid credentials')
                 : 'Session expired';
@@ -469,6 +610,7 @@ async function openSurvey(id) {
     document.getElementById('detail-view').classList.remove('hidden');
     await refreshDetail();
     loadAnalysisHistory();
+    loadInsights();
 }
 
 async function refreshDetail() {
@@ -484,7 +626,7 @@ async function refreshDetail() {
     document.getElementById('close-btn').classList.toggle('hidden', s.status !== 'active');
     document.getElementById('reopen-btn').classList.toggle('hidden', s.status !== 'closed');
 
-    const avgMin = st.avg_completion_seconds ? (st.avg_completion_seconds / 60).toFixed(1) + ' min' : '—';
+    const avgMin = st.avg_completion_seconds ? (st.avg_completion_seconds / 60).toFixed(1) + ' min' : '\u2014';
     document.getElementById('detail-stats').innerHTML = `
         <div class="stat-box"><div class="num">${st.active_participants}</div><div class="lbl">Active Now</div></div>
         <div class="stat-box"><div class="num">${st.completed_participants}</div><div class="lbl">Completed</div></div>
@@ -495,11 +637,11 @@ async function refreshDetail() {
     const tbody = document.getElementById('participant-tbody');
     tbody.innerHTML = '';
     const select = document.getElementById('convo-select');
-    select.innerHTML = '<option value="">Select participant…</option>';
+    select.innerHTML = '<option value="">Select participant...</option>';
     data.participants.forEach((p, i) => {
-        const dur = p.duration_seconds ? (p.duration_seconds / 60).toFixed(1) + 'm' : '—';
+        const dur = p.duration_seconds ? (p.duration_seconds / 60).toFixed(1) + 'm' : '\u2014';
         const time = new Date(p.started_at).toLocaleString();
-        const statusClass = p.status === 'active' ? 'badge-active' : p.status === 'completed' ? 'badge-closed' : 'badge-draft';
+        const statusClass = p.status === 'active' ? 'badge-active' : p.status === 'completed' ? 'badge-active' : 'badge-closed';
         tbody.innerHTML += `<tr onclick="selectParticipant(${i})">
             <td>${p.id.substring(0,8)}</td>
             <td><span class="badge ${statusClass}">${p.status}</span></td>
@@ -517,13 +659,11 @@ async function refreshDetail() {
     document.getElementById('edit-facilitator-intro').value = s.facilitator_intro || '';
     const surveys = await api('/api/surveys');
     const full = surveys.find(x => x.id === currentSurveyId);
-    if (full) {
-        document.getElementById('edit-max').value = full.max_messages;
-    }
+    if (full) document.getElementById('edit-max').value = full.max_messages;
 }
 
 function selectParticipant(idx) {
-    switchTab('conversation', document.querySelectorAll('.tab')[1]);
+    switchTab('conversation', document.querySelectorAll('.tab')[2]);
     document.getElementById('convo-select').value = idx;
     showConversation(idx);
 }
@@ -534,6 +674,7 @@ function showConversation(idx) {
     const viewer = document.getElementById('convo-viewer');
     viewer.innerHTML = '';
     p.messages.forEach(m => {
+        if (m.content.startsWith('[TOOL_EVENTS]')) return;
         viewer.innerHTML += `<div class="convo-msg"><div class="role">${m.role}</div><div class="text">${esc(m.content)}</div></div>`;
     });
 }
@@ -557,13 +698,11 @@ async function reopenSurvey() {
 }
 
 async function deleteSurvey() {
-    if (!confirm('Permanently delete this survey? All participants and responses will be removed. This cannot be undone.')) return;
+    if (!confirm('Permanently delete this survey and all responses?')) return;
     try {
         await api(`/api/surveys/${currentSurveyId}`, 'DELETE');
         showList();
-    } catch (e) {
-        alert('Failed to delete: ' + e.message);
-    }
+    } catch (e) { alert('Failed to delete: ' + e.message); }
 }
 
 async function saveSettings() {
@@ -577,6 +716,132 @@ async function saveSettings() {
     await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
     alert('Settings saved!');
     refreshDetail();
+}
+
+// ── Insights ──
+async function loadInsights() {
+    document.getElementById('insights-loading').classList.remove('hidden');
+    document.getElementById('insights-content').classList.add('hidden');
+    try {
+        const data = await api(`/api/surveys/${currentSurveyId}/insights`);
+        currentInsights = data.insights;
+        renderInsights(data.insights);
+        document.getElementById('insights-loading').classList.add('hidden');
+        document.getElementById('insights-content').classList.remove('hidden');
+    } catch (e) {
+        document.getElementById('insights-loading').textContent = 'No data available yet.';
+    }
+}
+
+async function regenerateInsights() {
+    document.getElementById('insights-loading').textContent = 'Regenerating insights...';
+    document.getElementById('insights-loading').classList.remove('hidden');
+    document.getElementById('insights-content').classList.add('hidden');
+    try {
+        const data = await api(`/api/surveys/${currentSurveyId}/insights/regenerate`, 'POST');
+        currentInsights = data.insights;
+        renderInsights(data.insights);
+        document.getElementById('insights-loading').classList.add('hidden');
+        document.getElementById('insights-content').classList.remove('hidden');
+    } catch (e) {
+        document.getElementById('insights-loading').textContent = 'Failed to generate insights: ' + e.message;
+    }
+}
+
+function renderInsights(insights) {
+    renderSentimentChart(insights.sentiment || {});
+    renderThemesList(insights.themes || []);
+    renderEngagementChart(insights.participants || []);
+    renderInsightsTable(insights.participants || []);
+}
+
+function renderSentimentChart(sentiment) {
+    const total = (sentiment.positive || 0) + (sentiment.neutral || 0) + (sentiment.negative || 0);
+    const container = document.getElementById('sentiment-chart');
+    if (total === 0) { container.innerHTML = '<p style="color:var(--muted);font-size:0.88rem">No data</p>'; return; }
+
+    const pct = v => total > 0 ? Math.round((v / total) * 100) : 0;
+    container.innerHTML = `
+        <div class="sentiment-bar">
+            <span class="label">Positive</span>
+            <div class="bar-bg"><div class="bar-fill bar-positive" style="width:${pct(sentiment.positive)}%">${pct(sentiment.positive)}%</div></div>
+        </div>
+        <div class="sentiment-bar">
+            <span class="label">Neutral</span>
+            <div class="bar-bg"><div class="bar-fill bar-neutral" style="width:${pct(sentiment.neutral)}%">${pct(sentiment.neutral)}%</div></div>
+        </div>
+        <div class="sentiment-bar">
+            <span class="label">Negative</span>
+            <div class="bar-bg"><div class="bar-fill bar-negative" style="width:${pct(sentiment.negative)}%">${pct(sentiment.negative)}%</div></div>
+        </div>`;
+}
+
+function renderThemesList(themes) {
+    const container = document.getElementById('themes-list');
+    if (!themes.length) { container.innerHTML = '<p style="color:var(--muted);font-size:0.88rem">No themes detected</p>'; return; }
+    container.innerHTML = themes.slice(0, 8).map((t, i) =>
+        `<div class="theme-item">
+            <span class="theme-rank">${i + 1}</span>
+            <span class="theme-name">${esc(t.name)}</span>
+            <span class="theme-count">${t.count}</span>
+        </div>`
+    ).join('');
+}
+
+function renderEngagementChart(participants) {
+    const container = document.getElementById('engagement-chart');
+    if (!participants.length) { container.innerHTML = '<p style="color:var(--muted);font-size:0.88rem">No data</p>'; return; }
+
+    // Create histogram buckets 1-10
+    const buckets = Array(10).fill(0);
+    participants.forEach(p => {
+        const eng = Math.max(1, Math.min(10, Math.round(p.engagement || 5)));
+        buckets[eng - 1]++;
+    });
+    const max = Math.max(...buckets, 1);
+
+    container.innerHTML = '<div class="engagement-histogram" style="margin-bottom:24px">' +
+        buckets.map((count, i) =>
+            `<div class="histogram-bar" style="height:${(count / max) * 100}%">
+                <span class="bar-label">${i + 1}</span>
+            </div>`
+        ).join('') + '</div>';
+}
+
+function renderInsightsTable(participants) {
+    const tbody = document.getElementById('insights-tbody');
+    if (!participants.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted)">No data</td></tr>'; return; }
+
+    let sorted = [...participants];
+    if (insightsSortCol) {
+        sorted.sort((a, b) => {
+            let va = a[insightsSortCol], vb = b[insightsSortCol];
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            if (va < vb) return insightsSortAsc ? -1 : 1;
+            if (va > vb) return insightsSortAsc ? 1 : -1;
+            return 0;
+        });
+    }
+
+    tbody.innerHTML = sorted.map(p => {
+        const dotClass = p.sentiment === 'positive' ? 'dot-positive' : p.sentiment === 'negative' ? 'dot-negative' : 'dot-neutral';
+        const eng = p.engagement || 0;
+        const engClass = eng >= 7 ? 'eng-high' : eng >= 4 ? 'eng-mid' : 'eng-low';
+        const themes = (p.themes || []).slice(0, 3).map(t => esc(t)).join(', ');
+        return `<tr>
+            <td>${esc(p.id || '')}</td>
+            <td><span class="sentiment-dot ${dotClass}"></span>${p.sentiment || 'unknown'}</td>
+            <td><span class="engagement-badge ${engClass}">${eng}/10</span></td>
+            <td style="font-size:0.82rem;color:var(--muted)">${themes || '\u2014'}</td>
+        </tr>`;
+    }).join('');
+}
+
+function sortInsightsTable(col) {
+    if (insightsSortCol === col) { insightsSortAsc = !insightsSortAsc; }
+    else { insightsSortCol = col; insightsSortAsc = true; }
+    if (currentInsights) renderInsightsTable(currentInsights.participants || []);
 }
 
 // ── Analysis Chat ──
@@ -607,7 +872,6 @@ async function sendAnalysis() {
     container.scrollTop = container.scrollHeight;
 
     document.getElementById('analysis-send').disabled = true;
-
     try {
         const res = await api(`/api/surveys/${currentSurveyId}/analyze`, 'POST', {
             survey_id: currentSurveyId, message: text
@@ -632,13 +896,10 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s; re
 
 // ── Init ──
 if (token) {
-    // Verify token works
-    api('/api/surveys').then(data => {
-        showDashboard();
-    }).catch(() => { doLogout(); });
+    api('/api/surveys').then(() => showDashboard()).catch(() => doLogout());
 }
 
-// Auto-refresh active surveys every 15s
+// Auto-refresh every 15s
 setInterval(() => {
     if (currentSurveyId && !document.getElementById('detail-view').classList.contains('hidden')) {
         refreshDetail();
