@@ -609,6 +609,137 @@ def get_analysis_history(
 
 
 # ══════════════════════════════════════════════════════════════════
+#  ADMIN - SURVEY INSIGHTS (AI-generated analytics)
+# ══════════════════════════════════════════════════════════════════
+
+def _build_insights_prompt(survey, participants_data: list) -> str:
+    convos = []
+    for p in participants_data:
+        if p["messages"]:
+            msgs = "\n".join(
+                f"  {m['role']}: {m['content']}"
+                for m in p["messages"]
+                if not m["content"].startswith("[TOOL_EVENTS]")
+            )
+            convos.append(f"[Participant {p['id'][:8]} | {p['status']} | {p['message_count']} msgs]\n{msgs}")
+
+    return (
+        f"Analyze these survey conversations and return a JSON object.\n\n"
+        f"Survey: {survey.title}\nTopic: {survey.topic}\n"
+        f"Total participants: {len(participants_data)}\n\n"
+        f"--- CONVERSATIONS ---\n\n" + "\n\n".join(convos) + "\n\n"
+        f"Return ONLY valid JSON with this exact structure:\n"
+        f'{{\n'
+        f'  "sentiment": {{"positive": <count>, "neutral": <count>, "negative": <count>}},\n'
+        f'  "themes": [{{"name": "<theme>", "count": <mentions>}}, ...],\n'
+        f'  "participants": [\n'
+        f'    {{"id": "<first 8 chars>", "sentiment": "positive|neutral|negative", '
+        f'"engagement": <1-10>, "themes": ["<theme>", ...]}},\n'
+        f'    ...\n'
+        f'  ]\n'
+        f'}}'
+    )
+
+
+def _generate_insights(survey, db: Session) -> dict:
+    participants_data = []
+    for p in sorted(survey.participants, key=lambda x: x.started_at):
+        msgs = sorted(p.messages, key=lambda m: m.created_at)
+        participants_data.append({
+            "id": str(p.id),
+            "status": p.status.value,
+            "message_count": len([m for m in msgs if not m.content.startswith("[TOOL_EVENTS]")]),
+            "messages": [
+                {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+                for m in msgs
+            ],
+        })
+
+    if not participants_data:
+        return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": []}
+
+    prompt = _build_insights_prompt(survey, participants_data)
+    client = get_claude_client()
+    response = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=4096,
+        system="You are a survey data analyst. Return ONLY valid JSON, no markdown fences, no explanation.",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+    if raw.endswith("```"):
+        raw = raw[:-3].strip()
+    if raw.startswith("json"):
+        raw = raw[4:].strip()
+
+    try:
+        insights = json.loads(raw)
+    except json.JSONDecodeError:
+        insights = {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": [], "error": "Failed to parse insights"}
+
+    existing = db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey.id).first()
+    now = datetime.now(timezone.utc)
+    if existing:
+        existing.insights_json = json.dumps(insights)
+        existing.generated_at = now
+    else:
+        db.add(SurveyInsight(
+            survey_id=survey.id,
+            insights_json=json.dumps(insights),
+            generated_at=now,
+        ))
+    db.commit()
+    return insights
+
+
+@app.get("/api/surveys/{survey_id}/insights")
+def get_survey_insights(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = (
+        db.query(Survey)
+        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .options(joinedload(Survey.participants).joinedload(Participant.messages))
+        .first()
+    )
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    cached = db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey_id).first()
+    if cached:
+        age = (datetime.now(timezone.utc) - cached.generated_at).total_seconds()
+        if age < 300:
+            return {"insights": json.loads(cached.insights_json), "generated_at": cached.generated_at.isoformat(), "cached": True}
+
+    insights = _generate_insights(survey, db)
+    return {"insights": insights, "generated_at": datetime.now(timezone.utc).isoformat(), "cached": False}
+
+
+@app.post("/api/surveys/{survey_id}/insights/regenerate")
+def regenerate_survey_insights(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    survey = (
+        db.query(Survey)
+        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .options(joinedload(Survey.participants).joinedload(Participant.messages))
+        .first()
+    )
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    insights = _generate_insights(survey, db)
+    return {"insights": insights, "generated_at": datetime.now(timezone.utc).isoformat(), "cached": False}
+
+
+# ══════════════════════════════════════════════════════════════════
 #  PUBLIC - SURVEY CHATBOT
 # ══════════════════════════════════════════════════════════════════
 
