@@ -298,6 +298,40 @@
         .complete-card h2 { font-size: 1.4rem; margin-bottom: 8px; }
         .complete-card p { color: var(--muted); font-size: 0.95rem; }
 
+        /* ── Contact Info Form ── */
+        #contact-screen {
+            display: none; position: relative; z-index: 1;
+            min-height: 100vh; min-height: 100dvh;
+            align-items: center; justify-content: center; padding: 20px;
+        }
+        .contact-card {
+            background: var(--glass); backdrop-filter: blur(var(--blur));
+            -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius); padding: 40px 36px;
+            text-align: center; max-width: 420px; width: 100%;
+            box-shadow: 0 8px 32px rgba(99,102,241,0.08);
+        }
+        .contact-card h2 { font-size: 1.3rem; margin-bottom: 6px; }
+        .contact-card .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+        .contact-field { margin-bottom: 16px; text-align: left; }
+        .contact-field label { font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px; }
+        .contact-field input {
+            width: 100%; padding: 10px 14px; background: rgba(255,255,255,0.6);
+            border: 1.5px solid var(--glass-border); border-radius: var(--radius-sm);
+            font-size: 0.93rem; outline: none; transition: border-color 0.2s;
+        }
+        .contact-field input:focus { border-color: var(--primary); }
+        .contact-actions { display: flex; gap: 10px; margin-top: 24px; justify-content: center; }
+        .contact-actions .btn { min-width: 100px; }
+        .btn-skip {
+            padding: 13px 36px; font-size: 1rem; font-weight: 600;
+            border: 1.5px solid var(--glass-border); border-radius: var(--radius-sm);
+            cursor: pointer; background: transparent; color: var(--muted);
+            transition: all 0.15s;
+        }
+        .btn-skip:hover { border-color: var(--primary); color: var(--text); }
+
         /* Confetti */
         .confetti-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
         .confetti {
@@ -351,6 +385,19 @@
     </div>
 </div>
 
+<!-- Contact Info Screen -->
+<div id="contact-screen">
+    <div class="contact-card">
+        <h2>One last thing!</h2>
+        <p class="sub">Would you like to leave your contact details?</p>
+        <div id="contact-fields"></div>
+        <div class="contact-actions">
+            <button class="btn" onclick="submitContactInfo()">Submit</button>
+            <button class="btn-skip" onclick="skipContactInfo()">Skip</button>
+        </div>
+    </div>
+</div>
+
 <!-- Complete Screen -->
 <div id="complete-screen">
     <div class="confetti-container" id="confetti-container"></div>
@@ -367,15 +414,19 @@
 let sessionToken = null;
 let userMsgCount = 0;
 let maxMessages = 20;
+let collectName = false;
+let collectEmail = false;
+let collectPhone = false;
 
 function show(id) {
-    ['join-screen','chat-screen','complete-screen'].forEach(s => {
+    ['join-screen','chat-screen','complete-screen','contact-screen'].forEach(s => {
         const el = document.getElementById(s);
         el.style.display = 'none';
     });
     const target = document.getElementById(id);
-    target.style.display = id === 'chat-screen' ? 'flex' : (id === 'complete-screen' ? 'flex' : 'flex');
+    target.style.display = 'flex';
     if (id === 'complete-screen') spawnConfetti();
+    if (id === 'contact-screen') buildContactForm();
 }
 
 function addMessage(role, content) {
@@ -536,6 +587,9 @@ async function joinSurvey() {
         if (!res.ok) throw new Error(data.detail || 'Failed to join');
 
         sessionToken = data.session_token;
+        collectName = data.collect_name || false;
+        collectEmail = data.collect_email || false;
+        collectPhone = data.collect_phone || false;
         document.getElementById('survey-title').textContent = data.survey_title;
         updateProgress();
         show('chat-screen');
@@ -613,7 +667,8 @@ async function doStreamRequest(text) {
                         renderButtons(data);
                     } else if (data.t === 'done') {
                         if (data.is_complete) {
-                            setTimeout(() => show('complete-screen'), 2000);
+                            const needsContact = collectName || collectEmail || collectPhone;
+                            setTimeout(() => show(needsContact ? 'contact-screen' : 'complete-screen'), 2000);
                         }
                     } else if (data.t === 'error') {
                         streamEl.textContent = 'Error: ' + (data.v || 'Unknown');
@@ -626,7 +681,10 @@ async function doStreamRequest(text) {
         if (buffer.startsWith('data: ')) {
             try {
                 const data = JSON.parse(buffer.slice(6));
-                if (data.t === 'done' && data.is_complete) setTimeout(() => show('complete-screen'), 2000);
+                if (data.t === 'done' && data.is_complete) {
+                    const needsContact = collectName || collectEmail || collectPhone;
+                    setTimeout(() => show(needsContact ? 'contact-screen' : 'complete-screen'), 2000);
+                }
                 if (data.t === 'media') showMedia(data);
                 if (data.t === 'buttons') renderButtons(data);
             } catch (_) {}
@@ -660,6 +718,43 @@ document.getElementById('chat-input').addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';
 });
+
+// ── Contact Info ──
+function buildContactForm() {
+    const container = document.getElementById('contact-fields');
+    container.innerHTML = '';
+    if (collectName) {
+        container.innerHTML += `<div class="contact-field"><label>Name</label><input id="contact-name" placeholder="Your name"></div>`;
+    }
+    if (collectEmail) {
+        container.innerHTML += `<div class="contact-field"><label>Email</label><input id="contact-email" type="email" placeholder="your@email.com"></div>`;
+    }
+    if (collectPhone) {
+        container.innerHTML += `<div class="contact-field"><label>Phone</label><input id="contact-phone" type="tel" placeholder="Your phone number"></div>`;
+    }
+}
+
+async function submitContactInfo() {
+    const body = { session_token: sessionToken };
+    const nameEl = document.getElementById('contact-name');
+    const emailEl = document.getElementById('contact-email');
+    const phoneEl = document.getElementById('contact-phone');
+    if (nameEl) body.name = nameEl.value.trim();
+    if (emailEl) body.email = emailEl.value.trim();
+    if (phoneEl) body.phone = phoneEl.value.trim();
+    try {
+        await fetch('/api/survey/contact-info', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+    } catch (e) {}
+    show('complete-screen');
+}
+
+function skipContactInfo() {
+    show('complete-screen');
+}
 
 // Confetti
 function spawnConfetti() {

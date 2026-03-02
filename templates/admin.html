@@ -370,7 +370,7 @@
             <div class="tab-content" id="tab-participants">
                 <div style="overflow-x:auto">
                     <table class="participant-table">
-                        <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Started</th></tr></thead>
+                        <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Name</th><th>Email</th><th>Phone</th><th>Started</th></tr></thead>
                         <tbody id="participant-tbody"></tbody>
                     </table>
                 </div>
@@ -422,6 +422,14 @@
                         <label>Max Messages per Participant</label>
                         <input id="edit-max" type="number" min="1" max="100">
                     </div>
+                    <div class="form-group">
+                        <label>Collect Contact Info (shown after survey)</label>
+                        <div style="display:flex;gap:16px;margin-top:6px">
+                            <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-name"> Name</label>
+                            <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-email"> Email</label>
+                            <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-phone"> Phone</label>
+                        </div>
+                    </div>
                     <button class="btn" onclick="saveSettings()">Save Changes</button>
                 </div>
             </div>
@@ -456,6 +464,14 @@
         <div class="form-group">
             <label>Max Messages per Participant</label>
             <input id="new-max" type="number" value="20" min="1" max="100">
+        </div>
+        <div class="form-group">
+            <label>Collect Contact Info (shown after survey)</label>
+            <div style="display:flex;gap:16px;margin-top:6px">
+                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-name"> Name</label>
+                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-email"> Email</label>
+                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-phone"> Phone</label>
+            </div>
         </div>
         <div style="display:flex;gap:10px;margin-top:20px">
             <button class="btn" onclick="createSurvey()">Create Survey</button>
@@ -585,12 +601,16 @@ async function createSurvey() {
             facilitator_intro: document.getElementById('new-facilitator-intro').value.trim() || undefined,
             survey_code: document.getElementById('new-code').value.trim() || undefined,
             max_messages: parseInt(document.getElementById('new-max').value) || 20,
+            collect_name: document.getElementById('new-collect-name').checked,
+            collect_email: document.getElementById('new-collect-email').checked,
+            collect_phone: document.getElementById('new-collect-phone').checked,
         };
         if (!data.title || !data.topic || !data.system_prompt) throw new Error('Title, topic, and prompt are required');
         await api('/api/surveys', 'POST', data);
         closeCreateModal();
         ['new-title','new-topic','new-prompt','new-facilitator-intro','new-code'].forEach(id => document.getElementById(id).value = '');
         document.getElementById('new-max').value = '20';
+        ['new-collect-name','new-collect-email','new-collect-phone'].forEach(id => document.getElementById(id).checked = false);
         loadSurveys();
     } catch (e) {
         document.getElementById('create-error').textContent = e.message;
@@ -647,6 +667,9 @@ async function refreshDetail() {
             <td><span class="badge ${statusClass}">${p.status}</span></td>
             <td>${p.message_count}</td>
             <td>${dur}</td>
+            <td>${p.contact_name || '\u2014'}</td>
+            <td>${p.contact_email || '\u2014'}</td>
+            <td>${p.contact_phone || '\u2014'}</td>
             <td>${time}</td>
         </tr>`;
         select.innerHTML += `<option value="${i}">P-${p.id.substring(0,8)} (${p.status})</option>`;
@@ -659,7 +682,12 @@ async function refreshDetail() {
     document.getElementById('edit-facilitator-intro').value = s.facilitator_intro || '';
     const surveys = await api('/api/surveys');
     const full = surveys.find(x => x.id === currentSurveyId);
-    if (full) document.getElementById('edit-max').value = full.max_messages;
+    if (full) {
+        document.getElementById('edit-max').value = full.max_messages;
+        document.getElementById('edit-collect-name').checked = full.collect_name || false;
+        document.getElementById('edit-collect-email').checked = full.collect_email || false;
+        document.getElementById('edit-collect-phone').checked = full.collect_phone || false;
+    }
 }
 
 function selectParticipant(idx) {
@@ -712,6 +740,9 @@ async function saveSettings() {
         system_prompt: document.getElementById('edit-prompt').value.trim() || undefined,
         facilitator_intro: document.getElementById('edit-facilitator-intro').value.trim() || undefined,
         max_messages: parseInt(document.getElementById('edit-max').value) || undefined,
+        collect_name: document.getElementById('edit-collect-name').checked,
+        collect_email: document.getElementById('edit-collect-email').checked,
+        collect_phone: document.getElementById('edit-collect-phone').checked,
     };
     await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
     alert('Settings saved!');

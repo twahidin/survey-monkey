@@ -32,7 +32,7 @@ if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # Appended to survey system prompt to keep tone conversational and elicit more reflection
 CONVERSATIONAL_PROMPT = (
@@ -255,6 +255,9 @@ class SurveyCreate(BaseModel):
     facilitator_intro: Optional[str] = None
     survey_code: Optional[str] = None
     max_messages: int = 20
+    collect_name: bool = False
+    collect_email: bool = False
+    collect_phone: bool = False
 
 class SurveyUpdate(BaseModel):
     title: Optional[str] = None
@@ -262,6 +265,9 @@ class SurveyUpdate(BaseModel):
     system_prompt: Optional[str] = None
     facilitator_intro: Optional[str] = None
     max_messages: Optional[int] = None
+    collect_name: Optional[bool] = None
+    collect_email: Optional[bool] = None
+    collect_phone: Optional[bool] = None
 
 class JoinSurveyRequest(BaseModel):
     survey_code: str
@@ -269,6 +275,12 @@ class JoinSurveyRequest(BaseModel):
 class ChatRequest(BaseModel):
     session_token: str
     message: str
+
+class ContactInfoRequest(BaseModel):
+    session_token: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
 
 class AnalysisChatRequest(BaseModel):
     survey_id: str
@@ -343,6 +355,9 @@ def list_surveys(
             "status": s.status.value,
             "max_messages": s.max_messages,
             "facilitator_intro": s.facilitator_intro or "",
+            "collect_name": s.collect_name,
+            "collect_email": s.collect_email,
+            "collect_phone": s.collect_phone,
             "created_at": s.created_at.isoformat(),
             "closed_at": s.closed_at.isoformat() if s.closed_at else None,
             "active_participants": s.active_participants_count,
@@ -372,6 +387,9 @@ def create_survey(
         max_messages=req.max_messages,
         admin_id=admin.id,
         status=SurveyStatus.ACTIVE,
+        collect_name=req.collect_name,
+        collect_email=req.collect_email,
+        collect_phone=req.collect_phone,
     )
     db.add(survey)
     db.commit()
@@ -481,6 +499,9 @@ def get_survey_results(
             "completed_at": p.completed_at.isoformat() if p.completed_at else None,
             "duration_seconds": p.duration_seconds,
             "message_count": len(msgs),
+            "contact_name": p.contact_name or "",
+            "contact_email": p.contact_email or "",
+            "contact_phone": p.contact_phone or "",
             "messages": [
                 {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
                 for m in msgs
@@ -807,6 +828,9 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
         "survey_title": survey.title,
         "opening_message": opening,
         "opening_events": tool_events,
+        "collect_name": survey.collect_name,
+        "collect_email": survey.collect_email,
+        "collect_phone": survey.collect_phone,
     }
 
 
@@ -958,6 +982,22 @@ def complete_survey_session(req: ChatRequest, db: Session = Depends(get_db)):
         participant.completed_at = now
         participant.duration_seconds = (now - participant.started_at).total_seconds()
         db.commit()
+    return {"ok": True}
+
+
+@app.post("/api/survey/contact-info")
+def submit_contact_info(req: ContactInfoRequest, db: Session = Depends(get_db)):
+    """Save participant contact details after survey completion."""
+    participant = db.query(Participant).filter(Participant.session_token == req.session_token).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if req.name:
+        participant.contact_name = req.name.strip()
+    if req.email:
+        participant.contact_email = req.email.strip()
+    if req.phone:
+        participant.contact_phone = req.phone.strip()
+    db.commit()
     return {"ok": True}
 
 

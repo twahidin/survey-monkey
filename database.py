@@ -41,6 +41,21 @@ def init_db():
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_survey_insights_survey_id ON survey_insights(survey_id)"
         ))
+        # Contact collection columns
+        for col in ["collect_name", "collect_email", "collect_phone"]:
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE surveys ADD COLUMN {col} BOOLEAN NOT NULL DEFAULT false"
+                ))
+            except Exception:
+                pass
+        for col, coltype in [("contact_name", "VARCHAR(255)"), ("contact_email", "VARCHAR(255)"), ("contact_phone", "VARCHAR(100)")]:
+            try:
+                conn.execute(text(
+                    f"ALTER TABLE participants ADD COLUMN {col} {coltype}"
+                ))
+            except Exception:
+                pass
         conn.commit()
 
 

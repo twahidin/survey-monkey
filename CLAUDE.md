@@ -50,6 +50,6 @@ No test suite, linter, or build step exists. The frontend is vanilla HTML/CSS/JS
 4. Insights → `GET /api/surveys/{id}/insights` → Claude analyzes all transcripts, returns structured JSON (sentiment, themes, engagement), cached in `survey_insights` table for 5 minutes
 5. Analysis → `POST /api/surveys/{id}/analyze` → freeform AI analysis chatbot
 
-**Environment variables:** `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `DEFAULT_ADMIN_USER`, `DEFAULT_ADMIN_PASS`, `CLAUDE_MODEL` (default: `claude-haiku-4-5-20251001`), `PORT` (default: 8000), `UNSPLASH_ACCESS_KEY` (optional, for images), `PEXELS_API_KEY` (optional, for videos).
+**Environment variables:** `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `DEFAULT_ADMIN_USER`, `DEFAULT_ADMIN_PASS`, `CLAUDE_MODEL` (default: `claude-sonnet-4-6`), `PORT` (default: 8000), `UNSPLASH_ACCESS_KEY` (optional, for images), `PEXELS_API_KEY` (optional, for videos).
 
 **Deployment:** Railway via Docker. Health check at `/api/health`. DB tables auto-created on startup with retry logic.

@@ -55,6 +55,9 @@ class Survey(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     closed_at = Column(DateTime(timezone=True), nullable=True)
     admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False)
+    collect_name = Column(Boolean, default=False, nullable=False, server_default="false")
+    collect_email = Column(Boolean, default=False, nullable=False, server_default="false")
+    collect_phone = Column(Boolean, default=False, nullable=False, server_default="false")
 
     created_by_admin = relationship("AdminUser", back_populates="surveys")
     participants = relationship("Participant", back_populates="survey", cascade="all, delete-orphan")
@@ -82,6 +85,9 @@ class Participant(Base):
     started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     completed_at = Column(DateTime(timezone=True), nullable=True)
     duration_seconds = Column(Float, nullable=True)
+    contact_name = Column(String(255), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(100), nullable=True)
 
     survey = relationship("Survey", back_populates="participants")
     messages = relationship("ChatMessage", back_populates="participant", cascade="all, delete-orphan")
