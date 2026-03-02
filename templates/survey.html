@@ -171,6 +171,16 @@
             line-height: 1.55; font-size: 0.93rem; word-wrap: break-word;
             white-space: pre-wrap; animation: msgIn 0.25s ease-out;
         }
+        .msg table {
+            border-collapse: collapse; margin: 8px 0; font-size: 0.85rem; width: 100%;
+            white-space: normal;
+        }
+        .msg th, .msg td {
+            border: 1px solid rgba(0,0,0,0.12); padding: 6px 10px; text-align: left;
+        }
+        .msg th { background: rgba(99,102,241,0.08); font-weight: 600; }
+        .msg ul, .msg ol { margin: 4px 0 4px 18px; }
+        .msg p { margin: 4px 0; }
         @keyframes msgIn {
             from { opacity: 0; transform: translateY(8px); }
             to { opacity: 1; transform: translateY(0); }
@@ -429,10 +439,53 @@ function show(id) {
     if (id === 'contact-screen') buildContactForm();
 }
 
+function renderMd(text) {
+    // Escape HTML first
+    const esc = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const lines = esc.split('\n');
+    let html = '';
+    let inTable = false;
+    let tableRows = [];
+
+    function flushTable() {
+        if (!tableRows.length) return '';
+        let t = '<table>';
+        tableRows.forEach((row, i) => {
+            const tag = i === 0 ? 'th' : 'td';
+            // Skip separator row (---|---|---)
+            if (/^\s*\|?\s*[-:]+(\s*\|\s*[-:]+)+\s*\|?\s*$/.test(row)) return;
+            const cells = row.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+            t += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+        });
+        t += '</table>';
+        tableRows = [];
+        return t;
+    }
+
+    for (const line of lines) {
+        if (/^\s*\|/.test(line) && line.includes('|', 1)) {
+            inTable = true;
+            tableRows.push(line);
+        } else {
+            if (inTable) { html += flushTable(); inTable = false; }
+            let l = line;
+            l = l.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            l = l.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            html += l + '\n';
+        }
+    }
+    if (inTable) html += flushTable();
+    return html;
+}
+
 function addMessage(role, content) {
     const el = document.createElement('div');
     el.className = `msg ${role}`;
-    el.textContent = content;
+    if (role === 'assistant') {
+        el.innerHTML = renderMd(content);
+    } else {
+        el.textContent = content;
+    }
     document.getElementById('messages').appendChild(el);
     el.scrollIntoView({ behavior: 'smooth' });
     return el;
@@ -691,6 +744,7 @@ async function doStreamRequest(text) {
         }
 
         if (!hasText) streamEl.remove();
+        else streamEl.innerHTML = renderMd(streamEl.textContent);
         streamEl.id = '';
     } catch (e) {
         hideTyping();
