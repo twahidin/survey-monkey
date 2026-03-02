@@ -593,7 +593,7 @@ async function joinSurvey() {
         document.getElementById('survey-title').textContent = data.survey_title;
         updateProgress();
         show('chat-screen');
-        if (data.opening_message) addMessage('assistant', data.opening_message);
+        if (data.opening_message && data.opening_message !== '(presented interactive content)') addMessage('assistant', data.opening_message);
         // Render any tool events from the opening (buttons, media)
         if (data.opening_events && data.opening_events.length) {
             data.opening_events.forEach(ev => {

@@ -818,7 +818,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
         model=CLAUDE_MODEL,
         max_tokens=1024,
         system=system,
-        messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them and begin.)"}],
+        messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin. Always include a written greeting — do not rely solely on tools.)"}],
         tools=SURVEY_TOOLS,
     )
 
