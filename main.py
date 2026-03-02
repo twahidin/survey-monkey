@@ -863,7 +863,8 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     if not opening and tool_events:
         opening = "(presented interactive content)"
 
-    # Save the opening message
+    # Save the synthetic user prompt and opening message so history is anchored
+    db.add(ChatMessage(participant_id=participant.id, role="user", content="(The participant has just joined the survey.)"))
     db.add(ChatMessage(participant_id=participant.id, role="assistant", content=opening))
     if tool_events:
         db.add(ChatMessage(

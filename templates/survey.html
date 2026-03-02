@@ -398,11 +398,11 @@
 <!-- Contact Info Screen -->
 <div id="contact-screen">
     <div class="contact-card">
-        <h2>Thank you for participating!</h2>
-        <p class="sub">Before you go, could you share some details for our records? All fields are optional.</p>
+        <h2>Before we begin</h2>
+        <p class="sub">Could you share some details? All fields are optional.</p>
         <div id="contact-fields"></div>
         <div class="contact-actions">
-            <button class="btn" onclick="submitContactInfo()">Submit</button>
+            <button class="btn" onclick="submitContactInfo()">Continue</button>
             <button class="btn-skip" onclick="skipContactInfo()">Skip</button>
         </div>
     </div>
@@ -427,6 +427,9 @@ let maxMessages = 20;
 let collectName = false;
 let collectEmail = false;
 let collectPhone = false;
+let pendingOpeningMessage = null;
+let pendingOpeningEvents = null;
+let pendingSurveyTitle = null;
 
 function show(id) {
     ['join-screen','chat-screen','complete-screen','contact-screen'].forEach(s => {
@@ -622,6 +625,22 @@ function sendButtonResponse(value) {
     doStreamRequest(value);
 }
 
+// ── Start Chat (after join + optional contact) ──
+function startChat() {
+    document.getElementById('survey-title').textContent = pendingSurveyTitle;
+    updateProgress();
+    show('chat-screen');
+    if (pendingOpeningMessage && pendingOpeningMessage !== '(presented interactive content)') {
+        addMessage('assistant', pendingOpeningMessage);
+    }
+    if (pendingOpeningEvents && pendingOpeningEvents.length) {
+        pendingOpeningEvents.forEach(ev => {
+            if (ev.t === 'media') showMedia(ev);
+            else if (ev.t === 'buttons') renderButtons(ev);
+        });
+    }
+}
+
 // ── Join ──
 async function joinSurvey() {
     const code = document.getElementById('code-input').value.trim();
@@ -643,16 +662,15 @@ async function joinSurvey() {
         collectName = data.collect_name || false;
         collectEmail = data.collect_email || false;
         collectPhone = data.collect_phone || false;
-        document.getElementById('survey-title').textContent = data.survey_title;
-        updateProgress();
-        show('chat-screen');
-        if (data.opening_message && data.opening_message !== '(presented interactive content)') addMessage('assistant', data.opening_message);
-        // Render any tool events from the opening (buttons, media)
-        if (data.opening_events && data.opening_events.length) {
-            data.opening_events.forEach(ev => {
-                if (ev.t === 'media') showMedia(ev);
-                else if (ev.t === 'buttons') renderButtons(ev);
-            });
+        pendingSurveyTitle = data.survey_title;
+        pendingOpeningMessage = data.opening_message;
+        pendingOpeningEvents = data.opening_events || [];
+
+        const needsContact = collectName || collectEmail || collectPhone;
+        if (needsContact) {
+            show('contact-screen');
+        } else {
+            startChat();
         }
     } catch (e) {
         err.textContent = e.message;
@@ -720,8 +738,7 @@ async function doStreamRequest(text) {
                         renderButtons(data);
                     } else if (data.t === 'done') {
                         if (data.is_complete) {
-                            const needsContact = collectName || collectEmail || collectPhone;
-                            setTimeout(() => show(needsContact ? 'contact-screen' : 'complete-screen'), 2000);
+                            setTimeout(() => show('complete-screen'), 2000);
                         }
                     } else if (data.t === 'error') {
                         streamEl.textContent = 'Error: ' + (data.v || 'Unknown');
@@ -735,8 +752,7 @@ async function doStreamRequest(text) {
             try {
                 const data = JSON.parse(buffer.slice(6));
                 if (data.t === 'done' && data.is_complete) {
-                    const needsContact = collectName || collectEmail || collectPhone;
-                    setTimeout(() => show(needsContact ? 'contact-screen' : 'complete-screen'), 2000);
+                    setTimeout(() => show('complete-screen'), 2000);
                 }
                 if (data.t === 'media') showMedia(data);
                 if (data.t === 'buttons') renderButtons(data);
@@ -803,11 +819,11 @@ async function submitContactInfo() {
             body: JSON.stringify(body),
         });
     } catch (e) {}
-    show('complete-screen');
+    startChat();
 }
 
 function skipContactInfo() {
-    show('complete-screen');
+    startChat();
 }
 
 // Confetti
