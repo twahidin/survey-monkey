@@ -293,11 +293,11 @@ class AnalysisChatRequest(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def serve_survey_page():
-    return FileResponse("templates/survey.html")
+    return FileResponse("templates/survey.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 @app.get("/admin", response_class=HTMLResponse)
 def serve_admin_page():
-    return FileResponse("templates/admin.html")
+    return FileResponse("templates/admin.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -560,7 +560,7 @@ def get_survey_results(
 # ══════════════════════════════════════════════════════════════════
 
 @app.post("/api/surveys/{survey_id}/analyze")
-def analyze_survey(
+async def analyze_survey(
     survey_id: str,
     req: AnalysisChatRequest,
     request: Request,
@@ -588,6 +588,7 @@ def analyze_survey(
     survey_context = (
         f"Survey: {survey.title}\n"
         f"Topic: {survey.topic}\n"
+        f"System Prompt: {survey.system_prompt}\n"
         f"Total participants: {len(survey.participants)}\n"
         f"Completed: {survey.completed_participants_count}\n"
         f"Active: {survey.active_participants_count}\n\n"
@@ -611,28 +612,43 @@ def analyze_survey(
     ))
     db.commit()
 
-    # Call Claude
+    # Stream Claude response via SSE
     client = get_claude_client()
-    response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=2048,
-        system=(
-            "You are a survey data analyst. You have access to all the survey conversation data below. "
-            "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
-            "about the survey results. Be specific and cite participant responses when relevant.\n\n"
-            f"{survey_context}"
-        ),
-        messages=history,
+    system_prompt = (
+        "You are a survey data analyst. You have access to all the survey conversation data below. "
+        "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
+        "about the survey results. Be specific and cite participant responses when relevant.\n\n"
+        f"{survey_context}"
     )
-    assistant_text = response.content[0].text
 
-    # Save assistant message
-    db.add(AnalysisMessage(
-        survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text
-    ))
-    db.commit()
+    async def analysis_stream():
+        full_text = []
+        try:
+            with client.messages.stream(
+                model=CLAUDE_MODEL,
+                max_tokens=2048,
+                system=system_prompt,
+                messages=history,
+            ) as stream:
+                for text in stream.text_stream:
+                    full_text.append(text)
+                    yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
+            return
 
-    return {"response": assistant_text}
+        assistant_text = "".join(full_text)
+        db.add(AnalysisMessage(
+            survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text
+        ))
+        db.commit()
+        yield f"data: {json.dumps({'t': 'done'})}\n\n"
+
+    return StreamingResponse(
+        analysis_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/api/surveys/{survey_id}/analysis-history")
@@ -669,6 +685,7 @@ def _build_insights_prompt(survey, participants_data: list) -> str:
     return (
         f"Analyze these survey conversations and return a JSON object.\n\n"
         f"Survey: {survey.title}\nTopic: {survey.topic}\n"
+        f"System Prompt: {survey.system_prompt}\n"
         f"Total participants: {len(participants_data)}\n\n"
         f"--- CONVERSATIONS ---\n\n" + "\n\n".join(convos) + "\n\n"
         f"Return ONLY valid JSON with this exact structure:\n"
