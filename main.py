@@ -618,6 +618,16 @@ async def analyze_survey(
         "You are a survey data analyst. You have access to all the survey conversation data below. "
         "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
         "about the survey results. Be specific and cite participant responses when relevant.\n\n"
+        "CHARTS: When presenting quantitative data, include interactive charts using fenced code blocks "
+        "with the language tag `chart`. Each block must contain valid JSON with this schema:\n"
+        '  For charts: {"type":"pie|bar|doughnut|horizontalBar","title":"Chart Title","labels":["A","B"],"data":[10,20]}\n'
+        '  For tables: {"type":"table","title":"Table Title","headers":["Col1","Col2"],"rows":[["a","1"],["b","2"]]}\n\n'
+        "Example:\n```chart\n"
+        '{"type":"doughnut","title":"Sentiment Breakdown","labels":["Positive","Neutral","Negative"],"data":[12,5,3]}\n'
+        "```\n\n"
+        "Always accompany charts with a brief text interpretation. Use charts for sentiment distributions, "
+        "theme frequency, engagement comparisons, and any numeric breakdowns. Use table type for detailed "
+        "per-participant or multi-column data. You can include multiple charts in a single response.\n\n"
         f"{survey_context}"
     )
 
@@ -626,7 +636,7 @@ async def analyze_survey(
         try:
             with client.messages.stream(
                 model=CLAUDE_MODEL,
-                max_tokens=2048,
+                max_tokens=4096,
                 system=system_prompt,
                 messages=history,
             ) as stream:

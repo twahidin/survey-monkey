@@ -233,6 +233,20 @@
         }
         .analysis-input-area input:focus { border-color: var(--primary); }
 
+        /* ── Charts ── */
+        .chart-container {
+            background: rgba(255,255,255,0.45); backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+            padding: 16px; margin: 10px 0; overflow: hidden;
+        }
+        .chart-title { text-align: center; font-weight: 600; font-size: 0.82rem; margin-bottom: 8px; color: var(--text); }
+        .chart-container canvas { max-height: 280px; width: 100% !important; }
+        .chart-placeholder { white-space: normal; }
+        .chart-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; margin: 0; }
+        .chart-table th { background: rgba(99,102,241,0.1); font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid rgba(0,0,0,0.08); }
+        .chart-table td { padding: 6px 10px; text-align: left; border: 1px solid rgba(0,0,0,0.08); }
+        .chart-table tr:hover td { background: rgba(99,102,241,0.04); }
+
         /* ── Modal ── */
         .modal-overlay {
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -486,6 +500,7 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 let token = localStorage.getItem('admin_token');
 let currentSurveyId = null;
@@ -898,8 +913,10 @@ async function loadAnalysisHistory() {
     msgs.forEach(m => {
         const el = document.createElement('div');
         el.className = `analysis-msg ${m.role}`;
-        if (m.role === 'assistant') { el.innerHTML = renderMd(m.content); }
-        else { el.textContent = m.content; }
+        if (m.role === 'assistant') {
+            el.innerHTML = renderMd(m.content);
+            hydrateCharts(el);
+        } else { el.textContent = m.content; }
         container.appendChild(el);
     });
     container.scrollTop = container.scrollHeight;
@@ -956,9 +973,10 @@ async function sendAnalysis() {
                 } catch (_) {}
             }
         }
-        // Render markdown after stream completes
+        // Render markdown + charts after stream completes
         if (assistantEl.textContent && !assistantEl.textContent.startsWith('Error:')) {
             assistantEl.innerHTML = renderMd(assistantEl.textContent);
+            hydrateCharts(assistantEl);
         }
     } catch (e) {
         assistantEl.textContent = 'Error: ' + e.message;
@@ -968,8 +986,26 @@ async function sendAnalysis() {
     }
 }
 
+// ── Chart ID counter ──
+let __chartIdCounter = 0;
+window.__pendingCharts = {};
+
 function renderMd(text) {
-    const e = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Extract ```chart ... ``` blocks before escaping
+    const chartBlocks = [];
+    const withoutCharts = text.replace(/```chart\s*\n([\s\S]*?)```/g, (_, json) => {
+        const id = 'chart-' + (++__chartIdCounter);
+        try {
+            const data = JSON.parse(json.trim());
+            window.__pendingCharts[id] = data;
+            chartBlocks.push(id);
+            return `\x00CHART:${id}\x00`;
+        } catch (e) {
+            return '(invalid chart data)';
+        }
+    });
+
+    const e = withoutCharts.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const lines = e.split('\n');
     let html = '', tableRows = [];
     function flushTable() {
@@ -985,11 +1021,136 @@ function renderMd(text) {
         return t + '</table>';
     }
     for (const line of lines) {
-        if (/^\s*\|/.test(line) && line.includes('|', 1)) { tableRows.push(line); }
-        else { html += flushTable(); let l = line; l = l.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>'); l = l.replace(/\*(.+?)\*/g,'<em>$1</em>'); html += l + '\n'; }
+        // Check for chart placeholder
+        const chartMatch = line.match(/\x00CHART:(chart-\d+)\x00/);
+        if (chartMatch) {
+            html += flushTable();
+            html += `<div class="chart-placeholder" data-chart-id="${chartMatch[1]}"></div>\n`;
+        } else if (/^\s*\|/.test(line) && line.includes('|', 1)) {
+            tableRows.push(line);
+        } else {
+            html += flushTable();
+            let l = line;
+            l = l.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+            l = l.replace(/\*(.+?)\*/g,'<em>$1</em>');
+            html += l + '\n';
+        }
     }
     html += flushTable();
     return html;
+}
+
+// ── Chart rendering ──
+const CHART_COLORS = [
+    '#6366f1','#8b5cf6','#10b981','#f59e0b','#ef4444',
+    '#3b82f6','#ec4899','#14b8a6','#f97316','#a78bfa'
+];
+
+function hydrateCharts(containerEl) {
+    if (!containerEl) return;
+    const placeholders = containerEl.querySelectorAll('.chart-placeholder');
+    placeholders.forEach(ph => {
+        const id = ph.dataset.chartId;
+        const data = window.__pendingCharts[id];
+        if (!data) return;
+        delete window.__pendingCharts[id];
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'chart-container';
+        if (data.title) {
+            const title = document.createElement('div');
+            title.className = 'chart-title';
+            title.textContent = data.title;
+            wrapper.appendChild(title);
+        }
+
+        if (data.type === 'table') {
+            wrapper.innerHTML += renderChartTable(data);
+        } else {
+            const canvas = document.createElement('canvas');
+            canvas.id = id;
+            wrapper.appendChild(canvas);
+            ph.replaceWith(wrapper);
+            requestAnimationFrame(() => initChart(id, data));
+            return;
+        }
+        ph.replaceWith(wrapper);
+    });
+}
+
+function renderChartTable(data) {
+    let h = '<table class="chart-table">';
+    if (data.headers) {
+        h += '<tr>' + data.headers.map(c => `<th>${esc(String(c))}</th>`).join('') + '</tr>';
+    }
+    if (data.rows) {
+        data.rows.forEach(row => {
+            h += '<tr>' + row.map(c => `<td>${esc(String(c))}</td>`).join('') + '</tr>';
+        });
+    }
+    return h + '</table>';
+}
+
+function initChart(canvasId, data) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    let chartType = data.type;
+    const opts = {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: { display: true, position: 'bottom', labels: { padding: 12, usePointStyle: true, font: { size: 11 } } },
+            tooltip: {
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                titleColor: '#1e1b4b', bodyColor: '#1e1b4b',
+                borderColor: '#6366f1', borderWidth: 1,
+                cornerRadius: 8, padding: 10,
+                titleFont: { weight: 'bold' },
+            },
+        },
+    };
+    const config = { options: opts };
+
+    if (chartType === 'horizontalBar') {
+        chartType = 'bar';
+        opts.indexAxis = 'y';
+    }
+
+    if (chartType === 'bar') {
+        opts.plugins.legend.display = false;
+        config.type = 'bar';
+        config.data = {
+            labels: data.labels || [],
+            datasets: [{
+                data: data.data || [],
+                backgroundColor: (data.data || []).map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+                borderRadius: 6, borderSkipped: false,
+            }],
+        };
+    } else if (chartType === 'pie' || chartType === 'doughnut') {
+        config.type = chartType;
+        config.data = {
+            labels: data.labels || [],
+            datasets: [{
+                data: data.data || [],
+                backgroundColor: (data.data || []).map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+                borderWidth: 2, borderColor: '#fff',
+            }],
+        };
+    } else {
+        // Fallback to bar
+        config.type = 'bar';
+        config.data = {
+            labels: data.labels || [],
+            datasets: [{
+                data: data.data || [],
+                backgroundColor: (data.data || []).map((_, i) => CHART_COLORS[i % CHART_COLORS.length]),
+                borderRadius: 6, borderSkipped: false,
+            }],
+        };
+    }
+
+    new Chart(canvas, config);
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
