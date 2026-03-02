@@ -678,7 +678,8 @@ async function refreshDetail() {
             <td>${time}</td>
             <td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteParticipant('${p.id}')" title="Delete participant">&times;</button></td>
         </tr>`;
-        select.innerHTML += `<option value="${i}">P-${p.id.substring(0,8)} (${p.status})</option>`;
+        const pLabel = p.contact_name ? `${p.contact_name} (${p.status})` : `P-${p.id.substring(0,8)} (${p.status})`;
+        select.innerHTML += `<option value="${i}">${esc(pLabel)}</option>`;
     });
 
     // Settings
