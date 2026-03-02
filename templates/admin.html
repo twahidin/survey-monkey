@@ -370,7 +370,7 @@
             <div class="tab-content" id="tab-participants">
                 <div style="overflow-x:auto">
                     <table class="participant-table">
-                        <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Name</th><th>Email</th><th>Phone</th><th>Started</th></tr></thead>
+                        <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Name</th><th>Email</th><th>Phone</th><th>Started</th><th></th></tr></thead>
                         <tbody id="participant-tbody"></tbody>
                     </table>
                 </div>
@@ -671,6 +671,7 @@ async function refreshDetail() {
             <td>${p.contact_email || '\u2014'}</td>
             <td>${p.contact_phone || '\u2014'}</td>
             <td>${time}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteParticipant('${p.id}')" title="Delete participant">&times;</button></td>
         </tr>`;
         select.innerHTML += `<option value="${i}">P-${p.id.substring(0,8)} (${p.status})</option>`;
     });
@@ -723,6 +724,14 @@ async function closeSurvey() {
 async function reopenSurvey() {
     await api(`/api/surveys/${currentSurveyId}/reopen`, 'POST');
     refreshDetail();
+}
+
+async function deleteParticipant(pid) {
+    if (!confirm('Delete this participant and all their messages?')) return;
+    try {
+        await api(`/api/surveys/${currentSurveyId}/participants/${pid}`, 'DELETE');
+        refreshDetail();
+    } catch (e) { alert('Failed to delete: ' + e.message); }
 }
 
 async function deleteSurvey() {

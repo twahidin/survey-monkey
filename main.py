@@ -468,6 +468,28 @@ def delete_survey(
     return {"ok": True}
 
 
+@app.delete("/api/surveys/{survey_id}/participants/{participant_id}")
+def delete_participant(
+    survey_id: str,
+    participant_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    """Delete a single participant and all their chat messages."""
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    participant = db.query(Participant).filter(
+        Participant.id == participant_id, Participant.survey_id == survey_id
+    ).first()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    db.delete(participant)  # cascade deletes chat_messages
+    db.commit()
+    return {"ok": True}
+
+
 # ══════════════════════════════════════════════════════════════════
 #  ADMIN - ANALYTICS
 # ══════════════════════════════════════════════════════════════════
