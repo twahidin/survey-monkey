@@ -388,8 +388,8 @@
 <!-- Contact Info Screen -->
 <div id="contact-screen">
     <div class="contact-card">
-        <h2>One last thing!</h2>
-        <p class="sub">Would you like to leave your contact details?</p>
+        <h2>Thank you for participating!</h2>
+        <p class="sub">Before you go, could you share some details for our records? All fields are optional.</p>
         <div id="contact-fields"></div>
         <div class="contact-actions">
             <button class="btn" onclick="submitContactInfo()">Submit</button>
@@ -724,13 +724,13 @@ function buildContactForm() {
     const container = document.getElementById('contact-fields');
     container.innerHTML = '';
     if (collectName) {
-        container.innerHTML += `<div class="contact-field"><label>Name</label><input id="contact-name" placeholder="Your name"></div>`;
+        container.innerHTML += `<div class="contact-field"><label>Name <span style="font-weight:400;color:var(--muted)">(optional, for recording purposes)</span></label><input id="contact-name" placeholder="Your name"></div>`;
     }
     if (collectEmail) {
-        container.innerHTML += `<div class="contact-field"><label>Email</label><input id="contact-email" type="email" placeholder="your@email.com"></div>`;
+        container.innerHTML += `<div class="contact-field"><label>Email <span style="font-weight:400;color:var(--muted)">(optional, so we can follow up)</span></label><input id="contact-email" type="email" placeholder="your@email.com"></div>`;
     }
     if (collectPhone) {
-        container.innerHTML += `<div class="contact-field"><label>Phone</label><input id="contact-phone" type="tel" placeholder="Your phone number"></div>`;
+        container.innerHTML += `<div class="contact-field"><label>Contact Number <span style="font-weight:400;color:var(--muted)">(optional, for follow-up)</span></label><input id="contact-phone" type="tel" placeholder="Your contact number"></div>`;
     }
 }
 
