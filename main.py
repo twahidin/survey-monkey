@@ -32,7 +32,8 @@ if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+CLAUDE_CHAT_MODEL = os.environ.get("CLAUDE_CHAT_MODEL", "claude-haiku-4-5-20251001")
+CLAUDE_ANALYSIS_MODEL = os.environ.get("CLAUDE_ANALYSIS_MODEL", "claude-sonnet-4-6")
 
 # Appended to survey system prompt to keep tone conversational and elicit more reflection
 CONVERSATIONAL_PROMPT = (
@@ -681,7 +682,7 @@ async def analyze_survey(
         full_text = []
         try:
             with client.messages.stream(
-                model=CLAUDE_MODEL,
+                model=CLAUDE_ANALYSIS_MODEL,
                 max_tokens=4096,
                 system=system_prompt,
                 messages=history,
@@ -777,7 +778,7 @@ def _generate_insights(survey, db: Session) -> dict:
     prompt = _build_insights_prompt(survey, participants_data)
     client = get_claude_client()
     response = client.messages.create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_ANALYSIS_MODEL,
         max_tokens=4096,
         system="You are a survey data analyst. Return ONLY valid JSON, no markdown fences, no explanation.",
         messages=[{"role": "user", "content": prompt}],
@@ -888,7 +889,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     # Generate the opening message from Claude (with tool-use support)
     client = get_claude_client()
     response = client.messages.create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_CHAT_MODEL,
         max_tokens=1024,
         system=system,
         messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin. Always include a written greeting — do not rely solely on tools.)"}],
@@ -968,7 +969,7 @@ async def _chat_stream_generator_v2(
 
     try:
         response = client.messages.create(
-            model=CLAUDE_MODEL,
+            model=CLAUDE_CHAT_MODEL,
             max_tokens=1024,
             system=system,
             messages=history,
