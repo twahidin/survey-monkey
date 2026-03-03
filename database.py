@@ -43,25 +43,17 @@ def init_db():
         ))
         # Contact collection columns
         for col in ["collect_name", "collect_email", "collect_phone"]:
-            try:
-                conn.execute(text(
-                    f"ALTER TABLE surveys ADD COLUMN {col} BOOLEAN NOT NULL DEFAULT false"
-                ))
-            except Exception:
-                pass
+            conn.execute(text(
+                f"ALTER TABLE surveys ADD COLUMN IF NOT EXISTS {col} BOOLEAN NOT NULL DEFAULT false"
+            ))
         # Survey wizard columns
         for col in ["survey_type VARCHAR(30)", "questions TEXT", "instructions TEXT"]:
-            try:
-                conn.execute(text(f"ALTER TABLE surveys ADD COLUMN {col}"))
-            except Exception:
-                pass
+            conn.execute(text(f"ALTER TABLE surveys ADD COLUMN IF NOT EXISTS {col}"))
+        # Participant contact columns
         for col, coltype in [("contact_name", "VARCHAR(255)"), ("contact_email", "VARCHAR(255)"), ("contact_phone", "VARCHAR(100)")]:
-            try:
-                conn.execute(text(
-                    f"ALTER TABLE participants ADD COLUMN {col} {coltype}"
-                ))
-            except Exception:
-                pass
+            conn.execute(text(
+                f"ALTER TABLE participants ADD COLUMN IF NOT EXISTS {col} {coltype}"
+            ))
         conn.commit()
 
 
