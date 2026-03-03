@@ -428,6 +428,19 @@
                 <div class="glass-card">
                     <h3>Setup Survey</h3>
 
+                    <!-- Legacy prompt for surveys created before wizard -->
+                    <div id="edit-legacy-prompt-section" class="wizard-step hidden">
+                        <div class="wizard-step-header">
+                            <div class="wizard-step-number">!</div>
+                            <div class="wizard-step-title">Existing System Prompt</div>
+                        </div>
+                        <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">This survey was created with a raw system prompt. You can edit it below, or fill in the wizard fields above to switch to the new format.</p>
+                        <div class="form-group">
+                            <label>System Prompt</label>
+                            <textarea id="edit-prompt" rows="6"></textarea>
+                        </div>
+                    </div>
+
                     <div class="wizard-step">
                         <div class="wizard-step-header">
                             <div class="wizard-step-number">1</div>
@@ -833,6 +846,14 @@ async function refreshDetail() {
         document.getElementById('edit-instructions').value = full.instructions || '';
         const typeConfig = SURVEY_TYPE_CONFIG[full.survey_type];
         document.getElementById('edit-type-desc').textContent = typeConfig ? typeConfig.description : '';
+        // Show legacy prompt section for surveys created before the wizard
+        const legacySection = document.getElementById('edit-legacy-prompt-section');
+        if (!full.survey_type && s.system_prompt) {
+            document.getElementById('edit-prompt').value = s.system_prompt || '';
+            legacySection.classList.remove('hidden');
+        } else {
+            legacySection.classList.add('hidden');
+        }
     }
 }
 
@@ -900,6 +921,11 @@ async function saveSettings() {
         collect_email: document.getElementById('edit-collect-email').checked,
         collect_phone: document.getElementById('edit-collect-phone').checked,
     };
+    // Include raw system_prompt for legacy surveys (no wizard type set)
+    const legacyPrompt = document.getElementById('edit-prompt');
+    if (legacyPrompt && !document.getElementById('edit-legacy-prompt-section').classList.contains('hidden')) {
+        data.system_prompt = legacyPrompt.value.trim() || undefined;
+    }
     await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
     alert('Settings saved!');
     refreshDetail();
