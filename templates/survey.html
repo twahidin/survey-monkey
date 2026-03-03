@@ -78,6 +78,8 @@
         .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.3); }
         .btn:active { transform: translateY(0); }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn .spinner { display: inline-block; width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         .error-msg { color: #ef4444; margin-top: 12px; font-size: 0.85rem; }
 
         /* ── Chat Screen ── */
@@ -652,6 +654,7 @@ async function joinSurvey() {
     const btn = document.getElementById('join-btn');
     const err = document.getElementById('join-error');
     btn.disabled = true; err.textContent = '';
+    btn.innerHTML = '<span class="spinner"></span>Loading survey...';
 
     try {
         const res = await fetch('/api/survey/join', {
@@ -680,6 +683,7 @@ async function joinSurvey() {
         err.textContent = e.message;
     } finally {
         btn.disabled = false;
+        btn.textContent = 'Start Survey';
     }
 }
 
