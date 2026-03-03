@@ -54,6 +54,12 @@
             font-size: 0.93rem; outline: none; font-family: inherit; transition: border-color 0.2s;
         }
         .form-group input:focus, .form-group textarea:focus { border-color: var(--primary); }
+        .wizard-step { margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.3); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+        .wizard-step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .wizard-step-number { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-end)); color: #fff; font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .wizard-step-title { font-size: 0.95rem; font-weight: 600; }
+        .wizard-step .form-group:last-child { margin-bottom: 0; }
+        .type-desc { font-size: 0.82rem; color: var(--muted); margin-top: -8px; margin-bottom: 12px; min-height: 1.2em; }
         .btn {
             display: inline-block; padding: 10px 24px; font-size: 0.93rem; font-weight: 600;
             border: none; border-radius: 8px; cursor: pointer;
@@ -344,7 +350,7 @@
                 <button class="tab" onclick="switchTab('participants',this)">Participants</button>
                 <button class="tab" onclick="switchTab('conversation',this)">Conversations</button>
                 <button class="tab" onclick="switchTab('analysis',this)">Analysis Chat</button>
-                <button class="tab" onclick="switchTab('settings',this)">Settings</button>
+                <button class="tab" onclick="switchTab('settings',this)">Setup Survey</button>
             </div>
 
             <!-- Insights Tab -->
@@ -417,38 +423,74 @@
                 </div>
             </div>
 
-            <!-- Settings Tab -->
+            <!-- Settings / Setup Survey Tab -->
             <div class="tab-content" id="tab-settings">
                 <div class="glass-card">
-                    <h3>Survey Settings</h3>
-                    <div class="form-group">
-                        <label>Title</label>
-                        <input id="edit-title">
-                    </div>
-                    <div class="form-group">
-                        <label>Topic</label>
-                        <input id="edit-topic">
-                    </div>
-                    <div class="form-group">
-                        <label>System Prompt</label>
-                        <textarea id="edit-prompt" rows="6"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Facilitator intro</label>
-                        <textarea id="edit-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Max Messages per Participant</label>
-                        <input id="edit-max" type="number" min="1" max="100">
-                    </div>
-                    <div class="form-group">
-                        <label>Collect Contact Info (shown after survey)</label>
-                        <div style="display:flex;gap:16px;margin-top:6px">
-                            <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-name"> Name</label>
-                            <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-email"> Email</label>
-                            <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-phone"> Phone</label>
+                    <h3>Setup Survey</h3>
+
+                    <div class="wizard-step">
+                        <div class="wizard-step-header">
+                            <div class="wizard-step-number">1</div>
+                            <div class="wizard-step-title">Survey Type &amp; Topic</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Survey Type</label>
+                            <select id="edit-survey-type" onchange="onSurveyTypeChange('edit')">
+                                <option value="">Select a type...</option>
+                                <option value="general_sensing">General Sensing</option>
+                                <option value="categorising">Categorising</option>
+                                <option value="depth_survey">Depth Survey</option>
+                            </select>
+                        </div>
+                        <div class="type-desc" id="edit-type-desc"></div>
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input id="edit-title">
+                        </div>
+                        <div class="form-group">
+                            <label>Topic</label>
+                            <input id="edit-topic">
                         </div>
                     </div>
+
+                    <div class="wizard-step">
+                        <div class="wizard-step-header">
+                            <div class="wizard-step-number">2</div>
+                            <div class="wizard-step-title">Questions &amp; Instructions</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Questions <span style="font-weight:400;color:var(--muted)">(what to ask participants)</span></label>
+                            <textarea id="edit-questions" rows="6" placeholder="1. &#10;2. &#10;3. "></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Instructions <span style="font-weight:400;color:var(--muted)">(how the bot should behave)</span></label>
+                            <textarea id="edit-instructions" rows="4" placeholder="Ask each question, briefly follow up..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="wizard-step">
+                        <div class="wizard-step-header">
+                            <div class="wizard-step-number">3</div>
+                            <div class="wizard-step-title">Facilitator &amp; Settings</div>
+                        </div>
+                        <div class="form-group">
+                            <label>Facilitator intro <span style="font-weight:400;color:var(--muted)">(your name &amp; intro)</span></label>
+                            <textarea id="edit-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Max Messages per Participant</label>
+                            <input id="edit-max" type="number" min="1" max="100">
+                        </div>
+                        <div class="form-group">
+                            <label>Collect Contact Info <span style="font-weight:400;color:var(--muted)">(shown before survey starts)</span></label>
+                            <div style="display:flex;gap:16px;margin-top:6px">
+                                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-name"> Name</label>
+                                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-email"> Email</label>
+                                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-phone"> Phone</label>
+                            </div>
+                        </div>
+                    </div>
+
                     <button class="btn" onclick="saveSettings()">Save Changes</button>
                 </div>
             </div>
@@ -460,38 +502,74 @@
 <div id="create-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCreateModal()">
     <div class="modal">
         <h2>Create New Survey</h2>
-        <div class="form-group">
-            <label>Title</label>
-            <input id="new-title" placeholder="Customer Satisfaction Survey">
-        </div>
-        <div class="form-group">
-            <label>Topic</label>
-            <input id="new-topic" placeholder="Gather feedback on our product experience">
-        </div>
-        <div class="form-group">
-            <label>System Prompt (instructions for the chatbot)</label>
-            <textarea id="new-prompt" rows="6" placeholder="You are a friendly survey assistant..."></textarea>
-        </div>
-        <div class="form-group">
-            <label>Facilitator intro (your name &amp; intro)</label>
-            <textarea id="new-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
-        </div>
-        <div class="form-group">
-            <label>Survey Code (optional)</label>
-            <input id="new-code" placeholder="MYCODE" maxlength="10" style="text-transform:uppercase">
-        </div>
-        <div class="form-group">
-            <label>Max Messages per Participant</label>
-            <input id="new-max" type="number" value="20" min="1" max="100">
-        </div>
-        <div class="form-group">
-            <label>Collect Contact Info (shown after survey)</label>
-            <div style="display:flex;gap:16px;margin-top:6px">
-                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-name"> Name</label>
-                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-email"> Email</label>
-                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-phone"> Phone</label>
+
+        <div class="wizard-step">
+            <div class="wizard-step-header">
+                <div class="wizard-step-number">1</div>
+                <div class="wizard-step-title">Survey Type &amp; Topic</div>
+            </div>
+            <div class="form-group">
+                <label>Survey Type</label>
+                <select id="new-survey-type" onchange="onSurveyTypeChange('new')">
+                    <option value="">Select a type...</option>
+                    <option value="general_sensing">General Sensing</option>
+                    <option value="categorising">Categorising</option>
+                    <option value="depth_survey">Depth Survey</option>
+                </select>
+            </div>
+            <div class="type-desc" id="new-type-desc"></div>
+            <div class="form-group">
+                <label>Title</label>
+                <input id="new-title" placeholder="Customer Satisfaction Survey">
+            </div>
+            <div class="form-group">
+                <label>Topic</label>
+                <input id="new-topic" placeholder="Gather feedback on our product experience">
             </div>
         </div>
+
+        <div class="wizard-step">
+            <div class="wizard-step-header">
+                <div class="wizard-step-number">2</div>
+                <div class="wizard-step-title">Questions &amp; Instructions</div>
+            </div>
+            <div class="form-group">
+                <label>Questions <span style="font-weight:400;color:var(--muted)">(what to ask participants)</span></label>
+                <textarea id="new-questions" rows="6" placeholder="1. &#10;2. &#10;3. "></textarea>
+            </div>
+            <div class="form-group">
+                <label>Instructions <span style="font-weight:400;color:var(--muted)">(how the bot should behave)</span></label>
+                <textarea id="new-instructions" rows="4" placeholder="Ask each question, briefly follow up..."></textarea>
+            </div>
+        </div>
+
+        <div class="wizard-step">
+            <div class="wizard-step-header">
+                <div class="wizard-step-number">3</div>
+                <div class="wizard-step-title">Facilitator &amp; Settings</div>
+            </div>
+            <div class="form-group">
+                <label>Facilitator intro <span style="font-weight:400;color:var(--muted)">(your name &amp; intro)</span></label>
+                <textarea id="new-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Survey Code <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+                <input id="new-code" placeholder="MYCODE" maxlength="10" style="text-transform:uppercase">
+            </div>
+            <div class="form-group">
+                <label>Max Messages per Participant</label>
+                <input id="new-max" type="number" value="20" min="1" max="100">
+            </div>
+            <div class="form-group">
+                <label>Collect Contact Info <span style="font-weight:400;color:var(--muted)">(shown before survey starts)</span></label>
+                <div style="display:flex;gap:16px;margin-top:6px">
+                    <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-name"> Name</label>
+                    <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-email"> Email</label>
+                    <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-phone"> Phone</label>
+                </div>
+            </div>
+        </div>
+
         <div style="display:flex;gap:10px;margin-top:20px">
             <button class="btn" onclick="createSurvey()">Create Survey</button>
             <button class="btn btn-outline" onclick="closeCreateModal()">Cancel</button>
@@ -509,6 +587,39 @@ let currentInsights = null;
 let isRegister = false;
 let insightsSortCol = null;
 let insightsSortAsc = true;
+
+const SURVEY_TYPE_CONFIG = {
+    general_sensing: {
+        description: "Quick pulse check. Ask a question, clarify briefly, move on.",
+        questionsTemplate: "1. \n2. \n3. ",
+        instructionsTemplate: "Ask each question, briefly follow up once for clarification, then move to the next.",
+    },
+    categorising: {
+        description: "Classify participants into groups with tailored responses at the end.",
+        questionsTemplate: "1. \n2. \n3. ",
+        instructionsTemplate: "Based on answers, classify into groups: [Group A], [Group B], [Group C]. At the end, provide a tailored response per group.",
+    },
+    depth_survey: {
+        description: "Reflective conversation to understand deeper perspectives.",
+        questionsTemplate: "1. \n2. \n3. ",
+        instructionsTemplate: "Take your time. Ask probing follow-ups, explore motivations, encourage deep reflection.",
+    },
+};
+
+function onSurveyTypeChange(prefix) {
+    const sel = document.getElementById(prefix + '-survey-type');
+    const desc = document.getElementById(prefix + '-type-desc');
+    const questionsEl = document.getElementById(prefix + '-questions');
+    const instrEl = document.getElementById(prefix + '-instructions');
+    const config = SURVEY_TYPE_CONFIG[sel.value];
+    if (config) {
+        desc.textContent = config.description;
+        if (questionsEl && !questionsEl.value.trim()) questionsEl.value = config.questionsTemplate;
+        if (instrEl && !instrEl.value.trim()) instrEl.value = config.instructionsTemplate;
+    } else {
+        desc.textContent = '';
+    }
+}
 
 // ── Auth ──
 function toggleAuthMode() {
@@ -614,10 +725,15 @@ function closeCreateModal() { document.getElementById('create-modal').classList.
 
 async function createSurvey() {
     try {
+        const surveyType = document.getElementById('new-survey-type').value;
+        const questions = document.getElementById('new-questions').value.trim();
+        const instructions = document.getElementById('new-instructions').value.trim();
         const data = {
             title: document.getElementById('new-title').value.trim(),
             topic: document.getElementById('new-topic').value.trim(),
-            system_prompt: document.getElementById('new-prompt').value.trim(),
+            survey_type: surveyType || undefined,
+            questions: questions || undefined,
+            instructions: instructions || undefined,
             facilitator_intro: document.getElementById('new-facilitator-intro').value.trim() || undefined,
             survey_code: document.getElementById('new-code').value.trim() || undefined,
             max_messages: parseInt(document.getElementById('new-max').value) || 20,
@@ -625,10 +741,14 @@ async function createSurvey() {
             collect_email: document.getElementById('new-collect-email').checked,
             collect_phone: document.getElementById('new-collect-phone').checked,
         };
-        if (!data.title || !data.topic || !data.system_prompt) throw new Error('Title, topic, and prompt are required');
+        if (!data.title || !data.topic) throw new Error('Title and topic are required');
+        if (!surveyType) throw new Error('Please select a survey type');
+        if (!questions) throw new Error('Please add at least one question');
         await api('/api/surveys', 'POST', data);
         closeCreateModal();
-        ['new-title','new-topic','new-prompt','new-facilitator-intro','new-code'].forEach(id => document.getElementById(id).value = '');
+        ['new-title','new-topic','new-questions','new-instructions','new-facilitator-intro','new-code'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('new-survey-type').value = '';
+        document.getElementById('new-type-desc').textContent = '';
         document.getElementById('new-max').value = '20';
         ['new-collect-name','new-collect-email','new-collect-phone'].forEach(id => document.getElementById(id).checked = false);
         loadSurveys();
@@ -697,10 +817,9 @@ async function refreshDetail() {
         select.innerHTML += `<option value="${i}">${esc(pLabel)}</option>`;
     });
 
-    // Settings
+    // Settings / Setup wizard
     document.getElementById('edit-title').value = s.title;
     document.getElementById('edit-topic').value = s.topic;
-    document.getElementById('edit-prompt').value = s.system_prompt || '';
     document.getElementById('edit-facilitator-intro').value = s.facilitator_intro || '';
     const surveys = await api('/api/surveys');
     const full = surveys.find(x => x.id === currentSurveyId);
@@ -709,6 +828,11 @@ async function refreshDetail() {
         document.getElementById('edit-collect-name').checked = full.collect_name || false;
         document.getElementById('edit-collect-email').checked = full.collect_email || false;
         document.getElementById('edit-collect-phone').checked = full.collect_phone || false;
+        document.getElementById('edit-survey-type').value = full.survey_type || '';
+        document.getElementById('edit-questions').value = full.questions || '';
+        document.getElementById('edit-instructions').value = full.instructions || '';
+        const typeConfig = SURVEY_TYPE_CONFIG[full.survey_type];
+        document.getElementById('edit-type-desc').textContent = typeConfig ? typeConfig.description : '';
     }
 }
 
@@ -767,7 +891,9 @@ async function saveSettings() {
     const data = {
         title: document.getElementById('edit-title').value.trim(),
         topic: document.getElementById('edit-topic').value.trim(),
-        system_prompt: document.getElementById('edit-prompt').value.trim() || undefined,
+        survey_type: document.getElementById('edit-survey-type').value || undefined,
+        questions: document.getElementById('edit-questions').value.trim() || undefined,
+        instructions: document.getElementById('edit-instructions').value.trim() || undefined,
         facilitator_intro: document.getElementById('edit-facilitator-intro').value.trim() || undefined,
         max_messages: parseInt(document.getElementById('edit-max').value) || undefined,
         collect_name: document.getElementById('edit-collect-name').checked,

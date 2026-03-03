@@ -49,6 +49,12 @@ def init_db():
                 ))
             except Exception:
                 pass
+        # Survey wizard columns
+        for col in ["survey_type VARCHAR(30)", "questions TEXT", "instructions TEXT"]:
+            try:
+                conn.execute(text(f"ALTER TABLE surveys ADD COLUMN {col}"))
+            except Exception:
+                pass
         for col, coltype in [("contact_name", "VARCHAR(255)"), ("contact_email", "VARCHAR(255)"), ("contact_phone", "VARCHAR(100)")]:
             try:
                 conn.execute(text(

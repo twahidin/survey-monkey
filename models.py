@@ -58,6 +58,9 @@ class Survey(Base):
     collect_name = Column(Boolean, default=False, nullable=False, server_default="false")
     collect_email = Column(Boolean, default=False, nullable=False, server_default="false")
     collect_phone = Column(Boolean, default=False, nullable=False, server_default="false")
+    survey_type = Column(String(30), nullable=True)      # "general_sensing" | "categorising" | "depth_survey"
+    questions = Column(Text, nullable=True)               # what to ask participants
+    instructions = Column(Text, nullable=True)            # how the bot should behave
 
     created_by_admin = relationship("AdminUser", back_populates="surveys")
     participants = relationship("Participant", back_populates="survey", cascade="all, delete-orphan")

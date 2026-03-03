@@ -43,6 +43,24 @@ CONVERSATIONAL_PROMPT = (
     "Your goal is to elicit genuine reflection and richer responses, not to rush through questions.]"
 )
 
+SURVEY_TYPE_PROMPTS = {
+    "general_sensing": "You are conducting a General Sensing survey — a quick pulse check. Ask each question, briefly clarify or follow up once, then move on. Keep it focused and efficient.",
+    "categorising": "You are conducting a Categorising survey — classify participants into groups based on responses. Ask questions that help determine which category they belong to. At the end, reveal their category and provide a tailored response.",
+    "depth_survey": "You are conducting a Depth Survey — a reflective conversation. Take your time with each topic. Ask probing follow-ups, explore underlying motivations, help participants reflect deeply. Prioritise depth over breadth.",
+}
+
+
+def compose_system_prompt(survey_type, questions, instructions):
+    parts = []
+    tp = SURVEY_TYPE_PROMPTS.get(survey_type)
+    if tp:
+        parts.append(tp)
+    if questions and questions.strip():
+        parts.append(f"[QUESTIONS TO ASK THE PARTICIPANT:\n{questions.strip()}\n]")
+    if instructions and instructions.strip():
+        parts.append(f"[ADDITIONAL INSTRUCTIONS:\n{instructions.strip()}\n]")
+    return "\n\n".join(parts)
+
 
 # ──────────────────────────── Startup ────────────────────────────
 
@@ -251,13 +269,16 @@ class RegisterRequest(BaseModel):
 class SurveyCreate(BaseModel):
     title: str
     topic: str
-    system_prompt: str
+    system_prompt: Optional[str] = None
     facilitator_intro: Optional[str] = None
     survey_code: Optional[str] = None
     max_messages: int = 20
     collect_name: bool = False
     collect_email: bool = False
     collect_phone: bool = False
+    survey_type: Optional[str] = None
+    questions: Optional[str] = None
+    instructions: Optional[str] = None
 
 class SurveyUpdate(BaseModel):
     title: Optional[str] = None
@@ -268,6 +289,9 @@ class SurveyUpdate(BaseModel):
     collect_name: Optional[bool] = None
     collect_email: Optional[bool] = None
     collect_phone: Optional[bool] = None
+    survey_type: Optional[str] = None
+    questions: Optional[str] = None
+    instructions: Optional[str] = None
 
 class JoinSurveyRequest(BaseModel):
     survey_code: str
@@ -358,6 +382,9 @@ def list_surveys(
             "collect_name": s.collect_name,
             "collect_email": s.collect_email,
             "collect_phone": s.collect_phone,
+            "survey_type": s.survey_type or "",
+            "questions": s.questions or "",
+            "instructions": s.instructions or "",
             "created_at": s.created_at.isoformat(),
             "closed_at": s.closed_at.isoformat() if s.closed_at else None,
             "active_participants": s.active_participants_count,
@@ -378,10 +405,17 @@ def create_survey(
     code = req.survey_code or generate_survey_code()
     if db.query(Survey).filter(Survey.survey_code == code).first():
         raise HTTPException(status_code=400, detail="Survey code already in use")
+    # Compose system_prompt from wizard fields or use raw prompt
+    if req.survey_type and req.questions:
+        system_prompt = compose_system_prompt(req.survey_type, req.questions, req.instructions or "")
+    elif req.system_prompt:
+        system_prompt = req.system_prompt
+    else:
+        raise HTTPException(status_code=400, detail="Either survey type + questions or a system prompt is required")
     survey = Survey(
         title=req.title,
         topic=req.topic,
-        system_prompt=req.system_prompt,
+        system_prompt=system_prompt,
         facilitator_intro=req.facilitator_intro or None,
         survey_code=code.upper(),
         max_messages=req.max_messages,
@@ -390,6 +424,9 @@ def create_survey(
         collect_name=req.collect_name,
         collect_email=req.collect_email,
         collect_phone=req.collect_phone,
+        survey_type=req.survey_type,
+        questions=req.questions,
+        instructions=req.instructions,
     )
     db.add(survey)
     db.commit()
@@ -410,6 +447,12 @@ def update_survey(
         raise HTTPException(status_code=404, detail="Survey not found")
     for field, value in req.dict(exclude_unset=True).items():
         setattr(survey, field, value)
+    # Recompose system_prompt if wizard fields are present
+    effective_type = survey.survey_type
+    effective_questions = survey.questions
+    effective_instructions = survey.instructions
+    if effective_type and effective_questions:
+        survey.system_prompt = compose_system_prompt(effective_type, effective_questions, effective_instructions or "")
     db.commit()
     return {"ok": True}
 
@@ -544,6 +587,9 @@ def get_survey_results(
             "survey_code": survey.survey_code,
             "system_prompt": survey.system_prompt,
             "facilitator_intro": survey.facilitator_intro or "",
+            "survey_type": survey.survey_type or "",
+            "questions": survey.questions or "",
+            "instructions": survey.instructions or "",
         },
         "stats": {
             "total_participants": len(survey.participants),
