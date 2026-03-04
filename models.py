@@ -36,9 +36,13 @@ class AdminUser(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False, server_default="admin")  # "admin" or "teacher"
+    parent_admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True)
+    encrypted_api_key = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     surveys = relationship("Survey", back_populates="created_by_admin")
+    parent_admin = relationship("AdminUser", remote_side=[id], foreign_keys=[parent_admin_id])
 
 
 class Survey(Base):
@@ -136,3 +140,14 @@ class SurveyInsight(Base):
     survey_id = Column(UUID(as_uuid=True), ForeignKey("surveys.id"), nullable=False, index=True)
     insights_json = Column(Text, nullable=False)
     generated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(64), unique=True, nullable=False, index=True)
+    admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=False)
+    used_by_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    used_at = Column(DateTime(timezone=True), nullable=True)

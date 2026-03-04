@@ -33,9 +33,9 @@ No test suite, linter, or build step exists. The frontend is vanilla HTML/CSS/JS
 **Four Python modules, no framework beyond FastAPI:**
 
 - `main.py` — All API routes and the FastAPI app. Uses Anthropic tool_use API for agentic chat (show_image, show_buttons, show_video). Contains tool definitions (`SURVEY_TOOLS`), async media fetchers (Unsplash/Pexels), insights generation, and Pydantic schemas inline. SSE streaming at `/api/survey/chat/stream` with typed events: `chunk`, `media`, `buttons`, `done`, `error`.
-- `models.py` — SQLAlchemy ORM models using PostgreSQL UUID primary keys. Six tables: `admin_users`, `surveys`, `participants`, `chat_messages`, `analysis_messages`, `survey_insights`. Enums: `SurveyStatus` (draft/active/closed), `ParticipantStatus` (active/completed/abandoned).
+- `models.py` — SQLAlchemy ORM models using PostgreSQL UUID primary keys. Seven tables: `admin_users` (with `role`, `parent_admin_id`, `encrypted_api_key` for multi-tenant), `surveys`, `participants`, `chat_messages`, `analysis_messages`, `survey_insights`, `invite_codes`. Enums: `SurveyStatus` (draft/active/closed), `ParticipantStatus` (active/completed/abandoned).
 - `database.py` — Engine creation, session factory, `init_db()` with inline migrations. Auto-corrects Railway's `postgres://` to `postgresql://`. Pool sized for ~100 concurrent connections (25 + 75 overflow).
-- `auth.py` — PBKDF2 password hashing, JWT tokens (PyJWT), 24-hour expiry. Admin auth via cookie (`admin_token`) or Bearer header.
+- `auth.py` — PBKDF2 password hashing, JWT tokens (PyJWT), 24-hour expiry, Fernet encryption for per-user API keys. Admin auth via cookie (`admin_token`) or Bearer header.
 
 **Frontend (no build step, glassmorphism design):**
 
@@ -50,6 +50,6 @@ No test suite, linter, or build step exists. The frontend is vanilla HTML/CSS/JS
 4. Insights → `GET /api/surveys/{id}/insights` → Claude analyzes all transcripts, returns structured JSON (sentiment, themes, engagement), cached in `survey_insights` table for 5 minutes
 5. Analysis → `POST /api/surveys/{id}/analyze` → freeform AI analysis chatbot
 
-**Environment variables:** `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `DEFAULT_ADMIN_USER`, `DEFAULT_ADMIN_PASS`, `CLAUDE_CHAT_MODEL` (default: `claude-haiku-4-5-20251001`, used for survey conversations), `CLAUDE_ANALYSIS_MODEL` (default: `claude-sonnet-4-6`, used for insights and analysis chat), `PORT` (default: 8000), `UNSPLASH_ACCESS_KEY` (optional, for images), `PEXELS_API_KEY` (optional, for videos).
+**Environment variables:** `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `ENCRYPTION_KEY` (optional, for Fernet encryption of per-user API keys; auto-generated if unset), `DEFAULT_ADMIN_USER`, `DEFAULT_ADMIN_PASS`, `CLAUDE_CHAT_MODEL` (default: `claude-haiku-4-5-20251001`, used for survey conversations), `CLAUDE_ANALYSIS_MODEL` (default: `claude-sonnet-4-6`, used for insights and analysis chat), `PORT` (default: 8000), `UNSPLASH_ACCESS_KEY` (optional, for images), `PEXELS_API_KEY` (optional, for videos).
 
 **Deployment:** Railway via Docker. Health check at `/api/health`. DB tables auto-created on startup with retry logic.

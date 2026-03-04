@@ -54,6 +54,27 @@ def init_db():
             conn.execute(text(
                 f"ALTER TABLE participants ADD COLUMN IF NOT EXISTS {col} {coltype}"
             ))
+        # Multi-tenant columns
+        conn.execute(text(
+            "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'admin'"
+        ))
+        conn.execute(text(
+            "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS parent_admin_id UUID REFERENCES admin_users(id)"
+        ))
+        conn.execute(text(
+            "ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS encrypted_api_key TEXT"
+        ))
+        # Invite codes table
+        conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS invite_codes ("
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "code VARCHAR(64) UNIQUE NOT NULL, "
+            "admin_id UUID NOT NULL REFERENCES admin_users(id), "
+            "used_by_id UUID REFERENCES admin_users(id), "
+            "created_at TIMESTAMPTZ DEFAULT now(), "
+            "used_at TIMESTAMPTZ)"
+        ))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_invite_codes_code ON invite_codes(code)"))
         conn.commit()
 
 

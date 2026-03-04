@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
+from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
 from models import AdminUser
@@ -49,10 +50,29 @@ def authenticate_admin(db: Session, username: str, password: str) -> Optional[Ad
     return None
 
 
-def create_admin_user(db: Session, username: str, password: str) -> AdminUser:
+def get_fernet():
+    key = os.environ.get("ENCRYPTION_KEY")
+    if not key:
+        key = Fernet.generate_key().decode()
+        os.environ["ENCRYPTION_KEY"] = key
+    return Fernet(key.encode() if isinstance(key, str) else key)
+
+
+def encrypt_api_key(api_key: str) -> str:
+    return get_fernet().encrypt(api_key.encode()).decode()
+
+
+def decrypt_api_key(encrypted: str) -> str:
+    return get_fernet().decrypt(encrypted.encode()).decode()
+
+
+def create_admin_user(db: Session, username: str, password: str,
+                      role: str = "admin", parent_admin_id=None) -> AdminUser:
     admin = AdminUser(
         username=username,
         password_hash=hash_password(password),
+        role=role,
+        parent_admin_id=parent_admin_id,
     )
     db.add(admin)
     db.commit()

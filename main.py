@@ -20,11 +20,12 @@ from sqlalchemy import func
 from database import get_db, init_db
 from models import (
     Survey, SurveyStatus, Participant, ParticipantStatus,
-    ChatMessage, AdminUser, AnalysisMessage, SurveyInsight,
+    ChatMessage, AdminUser, AnalysisMessage, SurveyInsight, InviteCode,
 )
 from auth import (
     authenticate_admin, create_admin_user, create_access_token,
     decode_token, hash_password, update_admin_password,
+    encrypt_api_key, decrypt_api_key,
 )
 
 app = FastAPI(title="Survey Chatbot", version="1.0.0")
@@ -130,10 +131,39 @@ def generate_survey_code(length: int = 6) -> str:
     return "".join(secrets.choice(chars) for _ in range(length))
 
 
-def get_claude_client():
-    if not ANTHROPIC_API_KEY:
+def get_claude_client(api_key: str = None):
+    key = api_key or ANTHROPIC_API_KEY
+    if not key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
-    return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    return anthropic.Anthropic(api_key=key)
+
+
+def get_visible_admin_ids(db: Session, admin: AdminUser) -> list:
+    """Admin sees own + all teachers' surveys; teacher sees only own."""
+    if admin.role == "admin":
+        teacher_ids = [t.id for t in db.query(AdminUser).filter(
+            AdminUser.parent_admin_id == admin.id
+        ).all()]
+        return [admin.id] + teacher_ids
+    return [admin.id]
+
+
+def resolve_api_key(db: Session, survey: Survey) -> str:
+    """Resolve the API key for a survey: owner's key → parent admin's key → env var."""
+    owner = db.query(AdminUser).filter(AdminUser.id == survey.admin_id).first()
+    if owner and owner.encrypted_api_key:
+        try:
+            return decrypt_api_key(owner.encrypted_api_key)
+        except Exception:
+            pass
+    if owner and owner.parent_admin_id:
+        parent = db.query(AdminUser).filter(AdminUser.id == owner.parent_admin_id).first()
+        if parent and parent.encrypted_api_key:
+            try:
+                return decrypt_api_key(parent.encrypted_api_key)
+            except Exception:
+                pass
+    return ANTHROPIC_API_KEY
 
 
 # ──────────────────────────── Tool-Use ────────────────────────────
@@ -311,6 +341,14 @@ class AnalysisChatRequest(BaseModel):
     survey_id: str
     message: str
 
+class TeacherRegister(BaseModel):
+    username: str
+    password: str
+    invite_code: str
+
+class UpdateSettings(BaseModel):
+    api_key: Optional[str] = None
+
 
 # ══════════════════════════════════════════════════════════════════
 #  PAGE ROUTES
@@ -323,6 +361,10 @@ def serve_survey_page():
 @app.get("/admin", response_class=HTMLResponse)
 def serve_admin_page():
     return FileResponse("templates/admin.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
+@app.get("/register", response_class=HTMLResponse)
+def serve_register_page():
+    return FileResponse("templates/register.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -338,7 +380,7 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = create_access_token({"sub": str(admin.id), "username": admin.username})
     response.set_cookie("admin_token", token, httponly=True, samesite="lax", max_age=86400)
-    return {"token": token, "username": admin.username}
+    return {"token": token, "username": admin.username, "role": admin.role}
 
 @app.post("/api/auth/register")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -346,7 +388,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Username already exists")
     admin = create_admin_user(db, req.username, req.password)
     token = create_access_token({"sub": str(admin.id), "username": admin.username})
-    return {"token": token, "username": admin.username}
+    return {"token": token, "username": admin.username, "role": admin.role}
 
 @app.post("/api/auth/logout")
 def logout(response: Response):
@@ -364,13 +406,19 @@ def list_surveys(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
+    admin_ids = get_visible_admin_ids(db, admin)
     surveys = (
         db.query(Survey)
-        .filter(Survey.admin_id == admin.id)
+        .filter(Survey.admin_id.in_(admin_ids))
         .options(joinedload(Survey.participants))
         .order_by(Survey.created_at.desc())
         .all()
     )
+    # Build a map of admin_id → username for "created_by" labels
+    admin_map = {}
+    if admin.role == "admin":
+        for a in db.query(AdminUser).filter(AdminUser.id.in_(admin_ids)).all():
+            admin_map[str(a.id)] = a.username
     return [
         {
             "id": str(s.id),
@@ -391,6 +439,7 @@ def list_surveys(
             "active_participants": s.active_participants_count,
             "completed_participants": s.completed_participants_count,
             "total_participants": s.total_participants_count,
+            "created_by": admin_map.get(str(s.admin_id), ""),
         }
         for s in surveys
     ]
@@ -443,7 +492,8 @@ def update_survey(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     for field, value in req.dict(exclude_unset=True).items():
@@ -465,7 +515,8 @@ def close_survey(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     survey.status = SurveyStatus.CLOSED
@@ -487,7 +538,8 @@ def reopen_survey(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     survey.status = SurveyStatus.ACTIVE
@@ -503,7 +555,8 @@ def delete_survey(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     db.query(AnalysisMessage).filter(AnalysisMessage.survey_id == survey_id).delete()
@@ -521,7 +574,8 @@ def delete_participant(
     admin: AdminUser = Depends(get_current_admin),
 ):
     """Delete a single participant and all their chat messages."""
-    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id == admin.id).first()
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
     participant = db.query(Participant).filter(
@@ -545,9 +599,10 @@ def get_survey_results(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
+    admin_ids = get_visible_admin_ids(db, admin)
     survey = (
         db.query(Survey)
-        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
         .options(joinedload(Survey.participants).joinedload(Participant.messages))
         .first()
     )
@@ -614,9 +669,10 @@ async def analyze_survey(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
+    admin_ids = get_visible_admin_ids(db, admin)
     survey = (
         db.query(Survey)
-        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
         .options(joinedload(Survey.participants).joinedload(Participant.messages))
         .first()
     )
@@ -660,7 +716,8 @@ async def analyze_survey(
     db.commit()
 
     # Stream Claude response via SSE
-    client = get_claude_client()
+    api_key = resolve_api_key(db, survey)
+    client = get_claude_client(api_key)
     system_prompt = (
         "You are a survey data analyst. You have access to all the survey conversation data below. "
         "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
@@ -776,7 +833,8 @@ def _generate_insights(survey, db: Session) -> dict:
         return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": []}
 
     prompt = _build_insights_prompt(survey, participants_data)
-    client = get_claude_client()
+    api_key = resolve_api_key(db, survey)
+    client = get_claude_client(api_key)
     response = client.messages.create(
         model=CLAUDE_ANALYSIS_MODEL,
         max_tokens=4096,
@@ -818,9 +876,10 @@ def get_survey_insights(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
+    admin_ids = get_visible_admin_ids(db, admin)
     survey = (
         db.query(Survey)
-        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
         .options(joinedload(Survey.participants).joinedload(Participant.messages))
         .first()
     )
@@ -844,9 +903,10 @@ def regenerate_survey_insights(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
+    admin_ids = get_visible_admin_ids(db, admin)
     survey = (
         db.query(Survey)
-        .filter(Survey.id == survey_id, Survey.admin_id == admin.id)
+        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
         .options(joinedload(Survey.participants).joinedload(Participant.messages))
         .first()
     )
@@ -887,7 +947,8 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
         )
     system += CONVERSATIONAL_PROMPT + TOOL_USE_PROMPT
     # Generate the opening message from Claude (with tool-use support)
-    client = get_claude_client()
+    api_key = resolve_api_key(db, survey)
+    client = get_claude_client(api_key)
     response = client.messages.create(
         model=CLAUDE_CHAT_MODEL,
         max_tokens=1024,
@@ -1056,7 +1117,8 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             "and end the conversation warmly. Do not use tools in this final message.]"
         )
 
-    client = get_claude_client()
+    api_key = resolve_api_key(db, participant.survey)
+    client = get_claude_client(api_key)
     gen = _chat_stream_generator_v2(
         client, system, history, participant, db, near_limit
     )
@@ -1096,6 +1158,129 @@ def submit_contact_info(req: ContactInfoRequest, db: Session = Depends(get_db)):
         participant.contact_phone = req.phone.strip()
     db.commit()
     return {"ok": True}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN - TEACHER MANAGEMENT & SETTINGS
+# ══════════════════════════════════════════════════════════════════
+
+@app.get("/api/admin/me")
+def admin_me(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    return {
+        "id": str(admin.id),
+        "username": admin.username,
+        "role": admin.role,
+        "has_api_key": bool(admin.encrypted_api_key),
+    }
+
+
+@app.post("/api/admin/invite")
+def create_invite(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    if admin.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can invite teachers")
+    code = secrets.token_urlsafe(16)
+    invite = InviteCode(code=code, admin_id=admin.id)
+    db.add(invite)
+    db.commit()
+    return {"code": code}
+
+
+@app.post("/api/auth/register-teacher")
+def register_teacher(req: TeacherRegister, db: Session = Depends(get_db)):
+    invite = db.query(InviteCode).filter(InviteCode.code == req.invite_code, InviteCode.used_by_id.is_(None)).first()
+    if not invite:
+        raise HTTPException(status_code=400, detail="Invalid or already used invite code")
+    if db.query(AdminUser).filter(AdminUser.username == req.username).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+    teacher = create_admin_user(db, req.username, req.password, role="teacher", parent_admin_id=invite.admin_id)
+    invite.used_by_id = teacher.id
+    invite.used_at = datetime.now(timezone.utc)
+    db.commit()
+    token = create_access_token({"sub": str(teacher.id), "username": teacher.username})
+    return {"token": token, "username": teacher.username, "role": "teacher"}
+
+
+@app.get("/api/admin/teachers")
+def list_teachers(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    if admin.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view teachers")
+    teachers = db.query(AdminUser).filter(AdminUser.parent_admin_id == admin.id).all()
+    result = []
+    for t in teachers:
+        survey_count = db.query(Survey).filter(Survey.admin_id == t.id).count()
+        result.append({
+            "id": str(t.id),
+            "username": t.username,
+            "has_api_key": bool(t.encrypted_api_key),
+            "survey_count": survey_count,
+            "created_at": t.created_at.isoformat(),
+        })
+    return result
+
+
+@app.delete("/api/admin/teachers/{teacher_id}")
+def remove_teacher(teacher_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    if admin.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can remove teachers")
+    teacher = db.query(AdminUser).filter(
+        AdminUser.id == teacher_id, AdminUser.parent_admin_id == admin.id
+    ).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    # Reassign teacher's surveys to the admin
+    db.query(Survey).filter(Survey.admin_id == teacher.id).update({"admin_id": admin.id})
+    # Clean up analysis messages
+    db.query(AnalysisMessage).filter(AnalysisMessage.admin_id == teacher.id).update({"admin_id": admin.id})
+    # Delete invite codes used by this teacher
+    db.query(InviteCode).filter(InviteCode.used_by_id == teacher.id).update({"used_by_id": None, "used_at": None})
+    db.delete(teacher)
+    db.commit()
+    return {"ok": True}
+
+
+@app.put("/api/admin/settings")
+def update_settings(req: UpdateSettings, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    if req.api_key is not None:
+        if req.api_key.strip():
+            admin.encrypted_api_key = encrypt_api_key(req.api_key.strip())
+        else:
+            admin.encrypted_api_key = None
+    db.commit()
+    return {"ok": True, "has_api_key": bool(admin.encrypted_api_key)}
+
+
+@app.put("/api/admin/teachers/{teacher_id}/api-key")
+def update_teacher_api_key(teacher_id: str, req: UpdateSettings, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    if admin.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can update teacher API keys")
+    teacher = db.query(AdminUser).filter(
+        AdminUser.id == teacher_id, AdminUser.parent_admin_id == admin.id
+    ).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    if req.api_key is not None:
+        if req.api_key.strip():
+            teacher.encrypted_api_key = encrypt_api_key(req.api_key.strip())
+        else:
+            teacher.encrypted_api_key = None
+    db.commit()
+    return {"ok": True, "has_api_key": bool(teacher.encrypted_api_key)}
+
+
+@app.get("/api/admin/invites")
+def list_invites(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    if admin.role != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view invites")
+    invites = db.query(InviteCode).filter(InviteCode.admin_id == admin.id).order_by(InviteCode.created_at.desc()).all()
+    return [
+        {
+            "id": str(inv.id),
+            "code": inv.code,
+            "used": inv.used_by_id is not None,
+            "created_at": inv.created_at.isoformat(),
+        }
+        for inv in invites
+    ]
 
 
 # ══════════════════════════════════════════════════════════════════

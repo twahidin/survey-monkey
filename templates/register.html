@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Registration</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --glass: rgba(255,255,255,0.55);
+            --glass-border: rgba(255,255,255,0.3);
+            --blur: 20px;
+            --primary: #6366f1;
+            --primary-end: #8b5cf6;
+            --text: #1e1b4b;
+            --muted: #6b7280;
+            --border: rgba(255,255,255,0.35);
+            --danger: #ef4444;
+            --radius: 16px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #e8f0fe 0%, #f0e6ff 50%, #e8f0fe 100%);
+            color: var(--text); min-height: 100vh;
+            display: flex; align-items: center; justify-content: center; padding: 16px;
+        }
+        .orb { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; z-index: 0; animation: float 20s ease-in-out infinite; }
+        .orb-1 { width: 400px; height: 400px; background: #c4b5fd; top: -100px; right: -100px; }
+        .orb-2 { width: 350px; height: 350px; background: #93c5fd; bottom: -80px; left: -80px; animation-delay: -7s; }
+        @keyframes float { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(20px,-15px); } }
+        .card {
+            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
+            border: 1px solid var(--glass-border); border-radius: var(--radius);
+            padding: 40px 36px; width: 100%; max-width: 400px; text-align: center;
+            box-shadow: 0 8px 32px rgba(99,102,241,0.08); position: relative; z-index: 1;
+        }
+        .card h1 { font-size: 1.4rem; margin-bottom: 4px; }
+        .card .sub { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
+        .form-group { margin-bottom: 16px; text-align: left; }
+        .form-group label { font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px; }
+        .form-group input {
+            width: 100%; padding: 10px 12px; background: rgba(255,255,255,0.5);
+            border: 1.5px solid var(--border); border-radius: 8px;
+            font-size: 0.93rem; outline: none; font-family: inherit; transition: border-color 0.2s;
+        }
+        .form-group input:focus { border-color: var(--primary); }
+        .btn {
+            display: inline-block; padding: 10px 24px; font-size: 0.93rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: linear-gradient(135deg, var(--primary), var(--primary-end)); color: #fff;
+            transition: transform 0.15s, box-shadow 0.15s; width: 100%;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.25); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .error { color: var(--danger); margin-top: 8px; font-size: 0.82rem; }
+        .success { color: #065f46; margin-top: 8px; font-size: 0.88rem; }
+        .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 0.88rem; text-decoration: underline; }
+    </style>
+</head>
+<body>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="card">
+    <h1>Teacher Registration</h1>
+    <p class="sub">Create your teacher account with an invite code</p>
+    <div id="register-form">
+        <div class="form-group">
+            <label>Invite Code</label>
+            <input id="invite-code" placeholder="Paste your invite code">
+        </div>
+        <div class="form-group">
+            <label>Username</label>
+            <input id="reg-user" placeholder="Choose a username">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input id="reg-pass" type="password" placeholder="Choose a password"
+                   onkeydown="if(event.key==='Enter')doRegister()">
+        </div>
+        <button class="btn" style="margin-top:8px" onclick="doRegister()">Register</button>
+        <div class="error" id="reg-error"></div>
+    </div>
+    <div id="success-msg" class="hidden">
+        <p class="success">Account created successfully!</p>
+        <p style="margin-top:12px"><a href="/admin" class="link-btn">Go to Dashboard</a></p>
+    </div>
+    <p style="margin-top:16px">
+        <a href="/admin" class="link-btn" style="font-size:0.82rem">Already have an account? Sign in</a>
+    </p>
+</div>
+
+<script>
+// Pre-fill invite code from URL
+const params = new URLSearchParams(window.location.search);
+const codeFromUrl = params.get('code');
+if (codeFromUrl) document.getElementById('invite-code').value = codeFromUrl;
+
+async function doRegister() {
+    const code = document.getElementById('invite-code').value.trim();
+    const user = document.getElementById('reg-user').value.trim();
+    const pass = document.getElementById('reg-pass').value;
+    if (!code || !user || !pass) {
+        document.getElementById('reg-error').textContent = 'All fields are required';
+        return;
+    }
+    try {
+        const res = await fetch('/api/auth/register-teacher', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ invite_code: code, username: user, password: pass }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Registration failed');
+        // Store token and redirect
+        localStorage.setItem('admin_token', data.token);
+        localStorage.setItem('admin_role', data.role || 'teacher');
+        document.getElementById('register-form').classList.add('hidden');
+        document.getElementById('success-msg').classList.remove('hidden');
+        setTimeout(() => window.location.href = '/admin', 1500);
+    } catch (e) {
+        document.getElementById('reg-error').textContent = e.message;
+    }
+}
+
+// Hidden class helper
+document.head.insertAdjacentHTML('beforeend', '<style>.hidden{display:none!important}</style>');
+</script>
+</body>
+</html>

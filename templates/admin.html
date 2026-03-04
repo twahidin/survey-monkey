@@ -299,6 +299,9 @@
             <p style="margin-top:16px">
                 <button class="link-btn" onclick="toggleAuthMode()">Create an account</button>
             </p>
+            <p style="margin-top:8px">
+                <a class="link-btn" href="/register" style="font-size:0.82rem">Have an invite code? Register as teacher</a>
+            </p>
         </div>
     </div>
 </div>
@@ -309,6 +312,7 @@
         <h1><a href="javascript:void(0)" onclick="showList()" style="color:inherit;text-decoration:none;cursor:pointer">Survey Admin</a></h1>
         <div class="user-info">
             <span id="admin-name" style="font-size:0.88rem;color:var(--muted)"></span>
+            <button class="btn btn-sm btn-outline" onclick="openSettingsModal()">Settings</button>
             <button class="btn btn-sm btn-outline" onclick="doLogout()">Sign Out</button>
         </div>
     </div>
@@ -318,7 +322,10 @@
         <div id="list-view">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
                 <h2>Your Surveys</h2>
-                <button class="btn" onclick="openCreateModal()">+ New Survey</button>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-outline admin-only" onclick="openTeachersModal()">Teachers</button>
+                    <button class="btn" onclick="openCreateModal()">+ New Survey</button>
+                </div>
             </div>
             <div class="survey-grid" id="survey-grid"></div>
             <p id="no-surveys" class="hidden" style="text-align:center;color:var(--muted);padding:40px">
@@ -591,9 +598,47 @@
     </div>
 </div>
 
+<!-- TEACHERS MODAL (admin only) -->
+<div id="teachers-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeTeachersModal()">
+    <div class="modal">
+        <h2>Teacher Management</h2>
+        <div style="display:flex;gap:10px;margin-bottom:20px">
+            <button class="btn" onclick="generateInvite()">Generate Invite Link</button>
+        </div>
+        <div id="invite-link-box" class="hidden" style="margin-bottom:20px;padding:16px;background:rgba(99,102,241,0.08);border-radius:var(--radius-sm);word-break:break-all">
+            <div style="font-size:0.82rem;font-weight:600;margin-bottom:6px">Share this link with a teacher:</div>
+            <div id="invite-link-text" style="font-family:monospace;font-size:0.88rem;color:var(--primary)"></div>
+            <button class="btn btn-sm" style="margin-top:8px" onclick="copyInviteLink()">Copy Link</button>
+        </div>
+        <div id="teachers-list" style="margin-top:16px">
+            <p style="color:var(--muted);font-size:0.88rem">Loading teachers...</p>
+        </div>
+        <div style="margin-top:20px">
+            <button class="btn btn-outline" onclick="closeTeachersModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeSettingsModal()">
+    <div class="modal">
+        <h2>Account Settings</h2>
+        <div class="form-group">
+            <label>Anthropic API Key</label>
+            <input id="settings-api-key" type="password" placeholder="sk-ant-...">
+            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px" id="settings-api-status"></div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+            <button class="btn" onclick="saveApiKey()">Save</button>
+            <button class="btn btn-outline" onclick="closeSettingsModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 let token = localStorage.getItem('admin_token');
+let userRole = localStorage.getItem('admin_role') || 'admin';
 let currentSurveyId = null;
 let currentResults = null;
 let currentInsights = null;
@@ -651,7 +696,9 @@ async function doLogin() {
     try {
         const res = await api('/api/auth/login', 'POST', { username: user, password: pass });
         token = res.token;
+        userRole = res.role || 'admin';
         localStorage.setItem('admin_token', token);
+        localStorage.setItem('admin_role', userRole);
         document.getElementById('admin-name').textContent = res.username;
         showDashboard();
     } catch (e) {
@@ -666,7 +713,9 @@ async function doRegister() {
     try {
         const res = await api('/api/auth/register', 'POST', { username: user, password: pass });
         token = res.token;
+        userRole = res.role || 'admin';
         localStorage.setItem('admin_token', token);
+        localStorage.setItem('admin_role', userRole);
         document.getElementById('admin-name').textContent = res.username;
         showDashboard();
     } catch (e) {
@@ -676,14 +725,26 @@ async function doRegister() {
 
 function doLogout() {
     token = null;
+    userRole = 'admin';
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_role');
     document.getElementById('dashboard').classList.add('hidden');
     document.getElementById('auth-screen').classList.remove('hidden');
 }
 
-function showDashboard() {
+async function showDashboard() {
     document.getElementById('auth-screen').classList.add('hidden');
     document.getElementById('dashboard').classList.remove('hidden');
+    try {
+        const me = await api('/api/admin/me');
+        userRole = me.role;
+        localStorage.setItem('admin_role', userRole);
+        document.getElementById('admin-name').textContent = me.username;
+    } catch (e) {}
+    // Show/hide admin-only elements
+    document.querySelectorAll('.admin-only').forEach(el => {
+        el.classList.toggle('hidden', userRole !== 'admin');
+    });
     loadSurveys();
 }
 
@@ -717,6 +778,7 @@ async function loadSurveys() {
     noSurveys.classList.add('hidden');
     surveys.forEach(s => {
         const badgeClass = s.status === 'active' ? 'badge-active' : s.status === 'closed' ? 'badge-closed' : 'badge-draft';
+        const createdBy = (userRole === 'admin' && s.created_by) ? `<div style="font-size:0.78rem;color:var(--muted);margin-top:4px">By: ${esc(s.created_by)}</div>` : '';
         grid.innerHTML += `
             <div class="survey-card" onclick="openSurvey('${s.id}')">
                 <div style="display:flex;justify-content:space-between;align-items:center">
@@ -724,6 +786,7 @@ async function loadSurveys() {
                     <span class="badge ${badgeClass}">${s.status}</span>
                 </div>
                 <div class="code">${s.survey_code}</div>
+                ${createdBy}
                 <div class="stats-row">
                     <div class="stat"><div class="num">${s.active_participants}</div><div class="lbl">Active</div></div>
                     <div class="stat"><div class="num">${s.completed_participants}</div><div class="lbl">Completed</div></div>
@@ -1307,9 +1370,91 @@ function initChart(canvasId, data) {
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+// ── Teachers ──
+let lastInviteCode = '';
+function openTeachersModal() {
+    document.getElementById('teachers-modal').classList.remove('hidden');
+    document.getElementById('invite-link-box').classList.add('hidden');
+    loadTeachers();
+}
+function closeTeachersModal() { document.getElementById('teachers-modal').classList.add('hidden'); }
+
+async function loadTeachers() {
+    const container = document.getElementById('teachers-list');
+    try {
+        const teachers = await api('/api/admin/teachers');
+        if (!teachers.length) {
+            container.innerHTML = '<p style="color:var(--muted);font-size:0.88rem">No teachers yet. Generate an invite link to get started.</p>';
+            return;
+        }
+        container.innerHTML = teachers.map(t => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:rgba(255,255,255,0.3);border-radius:var(--radius-sm);margin-bottom:8px;border:1px solid var(--border)">
+                <div>
+                    <div style="font-weight:600">${esc(t.username)}</div>
+                    <div style="font-size:0.78rem;color:var(--muted)">${t.survey_count} survey${t.survey_count!==1?'s':''} &middot; API key: ${t.has_api_key ? 'Set' : 'Not set'}</div>
+                </div>
+                <button class="btn btn-sm btn-danger" onclick="removeTeacher('${t.id}','${esc(t.username)}')">Remove</button>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = '<p style="color:var(--danger);font-size:0.88rem">Failed to load teachers</p>';
+    }
+}
+
+async function generateInvite() {
+    try {
+        const res = await api('/api/admin/invite', 'POST');
+        lastInviteCode = res.code;
+        const link = window.location.origin + '/register?code=' + res.code;
+        document.getElementById('invite-link-text').textContent = link;
+        document.getElementById('invite-link-box').classList.remove('hidden');
+    } catch (e) { alert('Failed to generate invite: ' + e.message); }
+}
+
+function copyInviteLink() {
+    const text = document.getElementById('invite-link-text').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('#invite-link-box .btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy Link', 2000);
+    });
+}
+
+async function removeTeacher(id, name) {
+    if (!confirm(`Remove teacher "${name}"? Their surveys will be reassigned to you.`)) return;
+    try {
+        await api(`/api/admin/teachers/${id}`, 'DELETE');
+        loadTeachers();
+        loadSurveys();
+    } catch (e) { alert('Failed to remove: ' + e.message); }
+}
+
+// ── Settings ──
+function openSettingsModal() {
+    document.getElementById('settings-modal').classList.remove('hidden');
+    document.getElementById('settings-api-key').value = '';
+    api('/api/admin/me').then(me => {
+        document.getElementById('settings-api-status').textContent = me.has_api_key
+            ? 'An API key is currently set. Enter a new one to update, or leave blank to keep it.'
+            : 'No API key set. Surveys will use the system default key.';
+    });
+}
+function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
+
+async function saveApiKey() {
+    const key = document.getElementById('settings-api-key').value;
+    try {
+        const res = await api('/api/admin/settings', 'PUT', { api_key: key || null });
+        document.getElementById('settings-api-status').textContent = res.has_api_key
+            ? 'API key saved successfully.'
+            : 'API key cleared. Using system default.';
+        document.getElementById('settings-api-key').value = '';
+    } catch (e) { alert('Failed to save: ' + e.message); }
+}
+
 // ── Init ──
 if (token) {
-    api('/api/surveys').then(() => showDashboard()).catch(() => doLogout());
+    api('/api/admin/me').then(() => showDashboard()).catch(() => doLogout());
 }
 
 </script>
