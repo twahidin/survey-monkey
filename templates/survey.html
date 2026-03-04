@@ -567,9 +567,15 @@ function dismissMedia() {
 
 // ── Button Options ──
 function renderButtons(data) {
-    // Show the question text above the buttons
+    // Only show the button question if Claude didn't already say it in the text
     if (data.question) {
-        addMessage('assistant', data.question);
+        const msgs = document.getElementById('messages');
+        const last = msgs ? msgs.querySelector('.msg.assistant:last-of-type') : null;
+        const lastText = last ? last.textContent.trim() : '';
+        // Skip if the last assistant message already contains this question
+        if (!lastText || !lastText.includes(data.question.substring(0, 30))) {
+            addMessage('assistant', data.question);
+        }
     }
 
     const container = document.createElement('div');
