@@ -1281,6 +1281,12 @@ function hydrateCharts(containerEl) {
 
         if (data.type === 'table') {
             wrapper.innerHTML += renderChartTable(data);
+            const dlBtn = document.createElement('button');
+            dlBtn.className = 'btn btn-sm btn-outline';
+            dlBtn.style.cssText = 'margin-top:8px;font-size:0.78rem';
+            dlBtn.textContent = 'Download CSV';
+            dlBtn.onclick = () => downloadTableCsv(data);
+            wrapper.appendChild(dlBtn);
         } else {
             const canvas = document.createElement('canvas');
             canvas.id = id;
@@ -1291,6 +1297,22 @@ function hydrateCharts(containerEl) {
         }
         ph.replaceWith(wrapper);
     });
+}
+
+function downloadTableCsv(data) {
+    const rows = [];
+    if (data.headers) rows.push(data.headers);
+    if (data.rows) data.rows.forEach(r => rows.push(r));
+    const csv = rows.map(r => r.map(c => {
+        const s = String(c);
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (data.title || 'table').replace(/[^a-zA-Z0-9]/g, '_') + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
 }
 
 function renderChartTable(data) {
