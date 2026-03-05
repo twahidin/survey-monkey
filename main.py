@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from database import get_db, init_db
 from models import (
@@ -410,10 +410,17 @@ def list_surveys(
     admin: AdminUser = Depends(get_current_admin),
 ):
     admin_ids = get_visible_admin_ids(db, admin)
+    # Use subquery counts instead of loading all participants
     surveys = (
-        db.query(Survey)
+        db.query(
+            Survey,
+            func.count(Participant.id).label("total"),
+            func.count(case((Participant.status == ParticipantStatus.ACTIVE, 1))).label("active"),
+            func.count(case((Participant.status == ParticipantStatus.COMPLETED, 1))).label("completed"),
+        )
+        .outerjoin(Participant, Participant.survey_id == Survey.id)
         .filter(Survey.admin_id.in_(admin_ids))
-        .options(joinedload(Survey.participants))
+        .group_by(Survey.id)
         .order_by(Survey.created_at.desc())
         .all()
     )
@@ -439,12 +446,12 @@ def list_surveys(
             "instructions": s.instructions or "",
             "created_at": s.created_at.isoformat(),
             "closed_at": s.closed_at.isoformat() if s.closed_at else None,
-            "active_participants": s.active_participants_count,
-            "completed_participants": s.completed_participants_count,
-            "total_participants": s.total_participants_count,
+            "active_participants": active,
+            "completed_participants": completed,
+            "total_participants": total,
             "created_by": admin_map.get(str(s.admin_id), ""),
         }
-        for s in surveys
+        for s, total, active, completed in surveys
     ]
 
 
@@ -606,23 +613,48 @@ def get_survey_results(
     survey = (
         db.query(Survey)
         .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
-        .options(joinedload(Survey.participants).joinedload(Participant.messages))
         .first()
     )
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
+    # Efficient count queries instead of loading all participants
+    counts = db.query(
+        func.count(Participant.id).label("total"),
+        func.count(case((Participant.status == ParticipantStatus.ACTIVE, 1))).label("active"),
+        func.count(case((Participant.status == ParticipantStatus.COMPLETED, 1))).label("completed"),
+        func.avg(Participant.duration_seconds).label("avg_duration"),
+    ).filter(Participant.survey_id == survey_id).first()
+
+    # Load participants with message counts (no message content yet)
+    participants = (
+        db.query(
+            Participant,
+            func.count(ChatMessage.id).label("msg_count"),
+        )
+        .outerjoin(ChatMessage, ChatMessage.participant_id == Participant.id)
+        .filter(Participant.survey_id == survey_id)
+        .group_by(Participant.id)
+        .order_by(Participant.started_at)
+        .all()
+    )
+
     participants_data = []
-    completion_times = []
-    for p in sorted(survey.participants, key=lambda x: x.started_at):
-        msgs = sorted(p.messages, key=lambda m: m.created_at)
+    for p, msg_count in participants:
+        # Load messages per participant (avoids one massive join)
+        msgs = (
+            db.query(ChatMessage)
+            .filter(ChatMessage.participant_id == p.id)
+            .order_by(ChatMessage.created_at)
+            .all()
+        )
         p_data = {
             "id": str(p.id),
             "status": p.status.value,
             "started_at": p.started_at.isoformat(),
             "completed_at": p.completed_at.isoformat() if p.completed_at else None,
             "duration_seconds": p.duration_seconds,
-            "message_count": len(msgs),
+            "message_count": msg_count,
             "contact_name": p.contact_name or "",
             "contact_email": p.contact_email or "",
             "contact_phone": p.contact_phone or "",
@@ -632,10 +664,6 @@ def get_survey_results(
             ],
         }
         participants_data.append(p_data)
-        if p.duration_seconds:
-            completion_times.append(p.duration_seconds)
-
-    avg_time = sum(completion_times) / len(completion_times) if completion_times else 0
 
     return {
         "survey": {
@@ -649,12 +677,16 @@ def get_survey_results(
             "survey_type": survey.survey_type or "",
             "questions": survey.questions or "",
             "instructions": survey.instructions or "",
+            "max_messages": survey.max_messages,
+            "collect_name": survey.collect_name,
+            "collect_email": survey.collect_email,
+            "collect_phone": survey.collect_phone,
         },
         "stats": {
-            "total_participants": len(survey.participants),
-            "active_participants": survey.active_participants_count,
-            "completed_participants": survey.completed_participants_count,
-            "avg_completion_seconds": round(avg_time, 1),
+            "total_participants": counts.total or 0,
+            "active_participants": counts.active or 0,
+            "completed_participants": counts.completed or 0,
+            "avg_completion_seconds": round(counts.avg_duration or 0, 1),
         },
         "participants": participants_data,
     }

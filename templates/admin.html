@@ -897,26 +897,22 @@ async function refreshDetail() {
     document.getElementById('edit-title').value = s.title;
     document.getElementById('edit-topic').value = s.topic;
     document.getElementById('edit-facilitator-intro').value = s.facilitator_intro || '';
-    const surveys = await api('/api/surveys');
-    const full = surveys.find(x => x.id === currentSurveyId);
-    if (full) {
-        document.getElementById('edit-max').value = full.max_messages;
-        document.getElementById('edit-collect-name').checked = full.collect_name || false;
-        document.getElementById('edit-collect-email').checked = full.collect_email || false;
-        document.getElementById('edit-collect-phone').checked = full.collect_phone || false;
-        document.getElementById('edit-survey-type').value = full.survey_type || '';
-        document.getElementById('edit-questions').value = full.questions || '';
-        document.getElementById('edit-instructions').value = full.instructions || '';
-        const typeConfig = SURVEY_TYPE_CONFIG[full.survey_type];
-        document.getElementById('edit-type-desc').textContent = typeConfig ? typeConfig.description : '';
-        // Show legacy prompt section for surveys created before the wizard
-        const legacySection = document.getElementById('edit-legacy-prompt-section');
-        if (!full.survey_type && s.system_prompt) {
-            document.getElementById('edit-prompt').value = s.system_prompt || '';
-            legacySection.classList.remove('hidden');
-        } else {
-            legacySection.classList.add('hidden');
-        }
+    document.getElementById('edit-max').value = s.max_messages;
+    document.getElementById('edit-collect-name').checked = s.collect_name || false;
+    document.getElementById('edit-collect-email').checked = s.collect_email || false;
+    document.getElementById('edit-collect-phone').checked = s.collect_phone || false;
+    document.getElementById('edit-survey-type').value = s.survey_type || '';
+    document.getElementById('edit-questions').value = s.questions || '';
+    document.getElementById('edit-instructions').value = s.instructions || '';
+    const typeConfig = SURVEY_TYPE_CONFIG[s.survey_type];
+    document.getElementById('edit-type-desc').textContent = typeConfig ? typeConfig.description : '';
+    // Show legacy prompt section for surveys created before the wizard
+    const legacySection = document.getElementById('edit-legacy-prompt-section');
+    if (!s.survey_type && s.system_prompt) {
+        document.getElementById('edit-prompt').value = s.system_prompt || '';
+        legacySection.classList.remove('hidden');
+    } else {
+        legacySection.classList.add('hidden');
     }
 }
 
