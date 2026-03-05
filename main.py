@@ -952,13 +952,18 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     # Generate the opening message from Claude (with tool-use support)
     api_key = resolve_api_key(db, survey)
     client = get_claude_client(api_key)
-    response = client.messages.create(
-        model=CLAUDE_CHAT_MODEL,
-        max_tokens=1024,
-        system=system,
-        messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin. Always include a written greeting — do not rely solely on tools.)"}],
-        tools=SURVEY_TOOLS,
-    )
+    try:
+        response = client.messages.create(
+            model=CLAUDE_CHAT_MODEL,
+            max_tokens=1024,
+            system=system,
+            messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin. Always include a written greeting — do not rely solely on tools.)"}],
+            tools=SURVEY_TOOLS,
+        )
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=500, detail="AI service authentication failed. Please check the API key configuration.")
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=500, detail=f"AI service error: {e.message}")
 
     # Process content blocks — extract text and tool events
     text_parts = []
