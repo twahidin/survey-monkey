@@ -400,9 +400,13 @@
 
             <!-- Participants Tab -->
             <div class="tab-content" id="tab-participants">
+                <div id="bulk-actions" style="display:none;margin-bottom:12px;align-items:center;gap:12px">
+                    <span id="selected-count" style="font-size:0.85rem;color:var(--muted)">0 selected</span>
+                    <button class="btn btn-danger btn-sm" onclick="bulkDeleteParticipants()">Delete Selected</button>
+                </div>
                 <div style="overflow-x:auto">
                     <table class="participant-table">
-                        <thead><tr><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Name</th><th>Email</th><th>Phone</th><th>Started</th><th></th></tr></thead>
+                        <thead><tr><th style="width:36px"><input type="checkbox" id="select-all-participants" onchange="toggleAllParticipants(this.checked)"></th><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Name</th><th>Email</th><th>Phone</th><th>Started</th><th></th></tr></thead>
                         <tbody id="participant-tbody"></tbody>
                     </table>
                 </div>
@@ -872,6 +876,8 @@ async function refreshDetail() {
     // Participants table
     const tbody = document.getElementById('participant-tbody');
     tbody.innerHTML = '';
+    document.getElementById('select-all-participants').checked = false;
+    document.getElementById('bulk-actions').style.display = 'none';
     const select = document.getElementById('convo-select');
     select.innerHTML = '<option value="">Select participant...</option>';
     data.participants.forEach((p, i) => {
@@ -879,6 +885,7 @@ async function refreshDetail() {
         const time = new Date(p.started_at).toLocaleString();
         const statusClass = p.status === 'active' ? 'badge-active' : p.status === 'completed' ? 'badge-active' : 'badge-closed';
         tbody.innerHTML += `<tr onclick="selectParticipant(${i})">
+            <td onclick="event.stopPropagation()"><input type="checkbox" class="participant-cb" data-pid="${p.id}" onchange="updateBulkActions()"></td>
             <td>${p.id.substring(0,8)}</td>
             <td><span class="badge ${statusClass}">${p.status}</span></td>
             <td>${p.message_count}</td>
@@ -955,6 +962,32 @@ async function deleteParticipant(pid) {
     if (!confirm('Delete this participant and all their messages?')) return;
     try {
         await api(`/api/surveys/${currentSurveyId}/participants/${pid}`, 'DELETE');
+        refreshDetail();
+    } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+function toggleAllParticipants(checked) {
+    document.querySelectorAll('.participant-cb').forEach(cb => cb.checked = checked);
+    updateBulkActions();
+}
+
+function updateBulkActions() {
+    const checked = document.querySelectorAll('.participant-cb:checked');
+    const bar = document.getElementById('bulk-actions');
+    const count = document.getElementById('selected-count');
+    bar.style.display = checked.length > 0 ? 'flex' : 'none';
+    count.textContent = checked.length + ' selected';
+    // Sync select-all checkbox
+    const all = document.querySelectorAll('.participant-cb');
+    document.getElementById('select-all-participants').checked = all.length > 0 && checked.length === all.length;
+}
+
+async function bulkDeleteParticipants() {
+    const ids = [...document.querySelectorAll('.participant-cb:checked')].map(cb => cb.dataset.pid);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} participant(s) and all their messages?`)) return;
+    try {
+        await api(`/api/surveys/${currentSurveyId}/participants/bulk-delete`, 'POST', { participant_ids: ids });
         refreshDetail();
     } catch (e) { alert('Failed to delete: ' + e.message); }
 }

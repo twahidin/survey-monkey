@@ -598,6 +598,35 @@ def delete_participant(
     return {"ok": True}
 
 
+class BulkDeleteParticipants(BaseModel):
+    participant_ids: list[str]
+
+
+@app.post("/api/surveys/{survey_id}/participants/bulk-delete")
+def bulk_delete_participants(
+    survey_id: str,
+    req: BulkDeleteParticipants,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    """Delete multiple participants and all their chat messages."""
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    deleted = 0
+    for pid in req.participant_ids:
+        p = db.query(Participant).filter(
+            Participant.id == pid, Participant.survey_id == survey_id
+        ).first()
+        if p:
+            db.delete(p)
+            deleted += 1
+    db.commit()
+    return {"ok": True, "deleted": deleted}
+
+
 # ══════════════════════════════════════════════════════════════════
 #  ADMIN - ANALYTICS
 # ══════════════════════════════════════════════════════════════════
