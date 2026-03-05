@@ -672,6 +672,10 @@ async function joinSurvey() {
         if (!res.ok) throw new Error(data.detail || 'Failed to join');
 
         sessionToken = data.session_token;
+        localStorage.setItem('survey_session', JSON.stringify({
+            session_token: data.session_token,
+            survey_code: code
+        }));
         collectName = data.collect_name || false;
         collectEmail = data.collect_email || false;
         collectPhone = data.collect_phone || false;
@@ -752,6 +756,7 @@ async function doStreamRequest(text) {
                         renderButtons(data);
                     } else if (data.t === 'done') {
                         if (data.is_complete) {
+                            localStorage.removeItem('survey_session');
                             setTimeout(() => show('complete-screen'), 2000);
                         }
                     } else if (data.t === 'error') {
@@ -787,6 +792,7 @@ async function doStreamRequest(text) {
 
 async function endSurvey() {
     if (!confirm('End this survey?')) return;
+    localStorage.removeItem('survey_session');
     try {
         await fetch('/api/survey/complete', {
             method: 'POST',
@@ -839,6 +845,71 @@ async function submitContactInfo() {
 function skipContactInfo() {
     startChat();
 }
+
+// ── Replay tool events from stored messages ──
+function replayToolEvents(content) {
+    try {
+        const json = content.replace(/^\[TOOL_EVENTS\]/, '');
+        const events = JSON.parse(json);
+        for (const ev of events) {
+            if (ev.t === 'media') showMedia(ev);
+            else if (ev.t === 'buttons') {
+                // Render buttons as disabled (already answered)
+                const container = document.createElement('div');
+                container.className = 'btn-options';
+                if (ev.options) {
+                    ev.options.forEach(opt => {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn-option';
+                        btn.textContent = opt.label;
+                        btn.disabled = true;
+                        container.appendChild(btn);
+                    });
+                }
+                document.getElementById('messages').appendChild(container);
+            }
+        }
+    } catch (e) {}
+}
+
+// ── Resume existing session on page load ──
+(async function checkResume() {
+    const saved = localStorage.getItem('survey_session');
+    if (!saved) return;
+    const { session_token } = JSON.parse(saved);
+    try {
+        const res = await fetch('/api/survey/resume', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ session_token }),
+        });
+        if (!res.ok) {
+            localStorage.removeItem('survey_session');
+            return;
+        }
+        const data = await res.json();
+        sessionToken = data.session_token;
+        maxMessages = data.max_messages;
+        userMsgCount = data.user_message_count;
+        document.getElementById('survey-title').textContent = data.survey_title;
+        updateProgress();
+        show('chat-screen');
+        for (const m of data.messages) {
+            if (m.content.startsWith('[TOOL_EVENTS]')) {
+                replayToolEvents(m.content);
+            } else if (m.role === 'assistant') {
+                addMessage('assistant', m.content);
+            } else if (m.role === 'user') {
+                addMessage('user', m.content);
+            }
+        }
+        // Scroll to bottom after replay
+        const msgs = document.getElementById('messages');
+        msgs.scrollTop = msgs.scrollHeight;
+    } catch (e) {
+        localStorage.removeItem('survey_session');
+    }
+})();
 
 // Confetti
 function spawnConfetti() {

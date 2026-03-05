@@ -1148,6 +1148,48 @@ async def _chat_stream_generator_v2(
     yield f"data: {json.dumps({'t': 'done', 'is_complete': is_complete})}\n\n"
 
 
+class ResumeSessionRequest(BaseModel):
+    session_token: str
+
+
+@app.post("/api/survey/resume")
+def resume_survey_session(req: ResumeSessionRequest, db: Session = Depends(get_db)):
+    """Resume an existing survey session — returns conversation history."""
+    participant = (
+        db.query(Participant)
+        .filter(Participant.session_token == req.session_token)
+        .options(joinedload(Participant.messages), joinedload(Participant.survey))
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if participant.status != ParticipantStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Session already ended")
+    if participant.survey.status != SurveyStatus.ACTIVE:
+        raise HTTPException(status_code=400, detail="Survey has been closed")
+
+    msgs = sorted(participant.messages, key=lambda m: m.created_at)
+    user_msg_count = sum(1 for m in msgs if m.role == "user")
+
+    return {
+        "session_token": participant.session_token,
+        "survey_title": participant.survey.title,
+        "max_messages": participant.survey.max_messages,
+        "collect_name": participant.survey.collect_name,
+        "collect_email": participant.survey.collect_email,
+        "collect_phone": participant.survey.collect_phone,
+        "user_message_count": user_msg_count,
+        "messages": [
+            {
+                "role": m.role,
+                "content": m.content,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in msgs
+        ],
+    }
+
+
 @app.post("/api/survey/chat/stream")
 async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     """Stream the assistant reply as SSE with tool-use support."""
