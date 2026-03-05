@@ -150,19 +150,22 @@ def get_visible_admin_ids(db: Session, admin: AdminUser) -> list:
 
 def resolve_api_key(db: Session, survey: Survey) -> str:
     """Resolve the API key for a survey: owner's key → parent admin's key → env var."""
-    owner = db.query(AdminUser).filter(AdminUser.id == survey.admin_id).first()
-    if owner and owner.encrypted_api_key:
-        try:
-            return decrypt_api_key(owner.encrypted_api_key)
-        except Exception:
-            pass
-    if owner and owner.parent_admin_id:
-        parent = db.query(AdminUser).filter(AdminUser.id == owner.parent_admin_id).first()
-        if parent and parent.encrypted_api_key:
+    try:
+        owner = db.query(AdminUser).filter(AdminUser.id == survey.admin_id).first()
+        if owner and owner.encrypted_api_key:
             try:
-                return decrypt_api_key(parent.encrypted_api_key)
+                return decrypt_api_key(owner.encrypted_api_key)
             except Exception:
                 pass
+        if owner and owner.parent_admin_id:
+            parent = db.query(AdminUser).filter(AdminUser.id == owner.parent_admin_id).first()
+            if parent and parent.encrypted_api_key:
+                try:
+                    return decrypt_api_key(parent.encrypted_api_key)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     return ANTHROPIC_API_KEY
 
 
