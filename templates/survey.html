@@ -846,6 +846,13 @@ function skipContactInfo() {
     startChat();
 }
 
+// ── Auto-fill survey code from URL parameter ──
+const _urlParams = new URLSearchParams(window.location.search);
+const _codeFromUrl = _urlParams.get('code');
+if (_codeFromUrl) {
+    document.getElementById('code-input').value = _codeFromUrl.toUpperCase();
+}
+
 // ── Replay tool events from stored messages ──
 function replayToolEvents(content) {
     try {

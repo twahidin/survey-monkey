@@ -342,6 +342,7 @@
                 <h2 id="detail-title"></h2>
                 <span id="detail-badge"></span>
                 <span id="detail-code" style="font-family:monospace;font-size:1.05rem;font-weight:700;color:var(--primary)"></span>
+                <button class="btn btn-sm btn-outline" id="copy-link-btn" onclick="copySurveyLink()" style="font-size:0.78rem;padding:4px 12px">Copy Link</button>
             </div>
             <div class="stats-bar" id="detail-stats"></div>
 
@@ -876,6 +877,7 @@ async function refreshDetail() {
 
     document.getElementById('detail-title').textContent = s.title;
     document.getElementById('detail-code').textContent = s.survey_code;
+    document.getElementById('copy-link-btn').setAttribute('data-code', s.survey_code);
     const badgeClass = s.status === 'active' ? 'badge-active' : s.status === 'closed' ? 'badge-closed' : 'badge-draft';
     document.getElementById('detail-badge').innerHTML = `<span class="badge ${badgeClass}">${s.status}</span>`;
 
@@ -1006,6 +1008,16 @@ async function bulkDeleteParticipants() {
         await api(`/api/surveys/${currentSurveyId}/participants/bulk-delete`, 'POST', { participant_ids: ids });
         refreshDetail();
     } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+function copySurveyLink() {
+    const code = document.getElementById('copy-link-btn').getAttribute('data-code');
+    const link = window.location.origin + '/?code=' + code;
+    navigator.clipboard.writeText(link).then(() => {
+        const btn = document.getElementById('copy-link-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
+    });
 }
 
 async function deleteSurvey() {
