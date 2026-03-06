@@ -580,6 +580,7 @@ def delete_survey(
     survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
+    db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey_id).delete()
     db.query(AnalysisMessage).filter(AnalysisMessage.survey_id == survey_id).delete()
     db.delete(survey)
     db.commit()
