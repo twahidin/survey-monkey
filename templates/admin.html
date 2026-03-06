@@ -642,7 +642,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script>
 let token = localStorage.getItem('admin_token');
-let userRole = localStorage.getItem('admin_role') || 'admin';
+let userRole = localStorage.getItem('admin_role') || 'teacher';
 let currentSurveyId = null;
 let currentResults = null;
 let currentInsights = null;
@@ -700,7 +700,7 @@ async function doLogin() {
     try {
         const res = await api('/api/auth/login', 'POST', { username: user, password: pass });
         token = res.token;
-        userRole = res.role || 'admin';
+        userRole = res.role || 'teacher';
         localStorage.setItem('admin_token', token);
         localStorage.setItem('admin_role', userRole);
         document.getElementById('admin-name').textContent = res.username;
@@ -729,7 +729,7 @@ async function doRegister() {
     try {
         const res = await api('/api/auth/register', 'POST', { username: user, password: pass });
         token = res.token;
-        userRole = res.role || 'admin';
+        userRole = res.role || 'teacher';
         localStorage.setItem('admin_token', token);
         localStorage.setItem('admin_role', userRole);
         document.getElementById('admin-name').textContent = res.username;
@@ -757,10 +757,14 @@ async function showDashboard() {
         localStorage.setItem('admin_role', userRole);
         document.getElementById('admin-name').textContent = me.username;
     } catch (e) {}
-    // Show/hide admin-only elements
+    // Show/hide admin-only elements based on confirmed role
     document.querySelectorAll('.admin-only').forEach(el => {
         el.classList.toggle('hidden', userRole !== 'admin');
     });
+    // Update heading for teachers
+    if (userRole === 'teacher') {
+        document.querySelector('#list-view h2').textContent = 'My Surveys';
+    }
     loadSurveys();
 }
 
@@ -1517,7 +1521,11 @@ async function saveApiKey() {
 
 // ── Init ──
 if (token) {
-    api('/api/admin/me').then(() => showDashboard()).catch(() => doLogout());
+    api('/api/admin/me').then(me => {
+        userRole = me.role;
+        localStorage.setItem('admin_role', userRole);
+        showDashboard();
+    }).catch(() => doLogout());
 }
 
 </script>
