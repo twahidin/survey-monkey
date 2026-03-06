@@ -71,11 +71,11 @@
         </div>
         <div class="form-group">
             <label>Username</label>
-            <input id="reg-user" placeholder="Choose a username">
+            <input id="reg-user" placeholder="Choose a username (no spaces)">
         </div>
         <div class="form-group">
             <label>Password</label>
-            <input id="reg-pass" type="password" placeholder="Choose a password"
+            <input id="reg-pass" type="password" placeholder="Min 8 chars, letters & numbers"
                    onkeydown="if(event.key==='Enter')doRegister()">
         </div>
         <button class="btn" style="margin-top:8px" onclick="doRegister()">Register</button>
@@ -102,6 +102,18 @@ async function doRegister() {
     const pass = document.getElementById('reg-pass').value;
     if (!code || !user || !pass) {
         document.getElementById('reg-error').textContent = 'All fields are required';
+        return;
+    }
+    if (/\s/.test(user)) {
+        document.getElementById('reg-error').textContent = 'Username must not contain spaces';
+        return;
+    }
+    if (pass.length < 8) {
+        document.getElementById('reg-error').textContent = 'Password must be at least 8 characters';
+        return;
+    }
+    if (!/[a-zA-Z]/.test(pass) || !/[0-9]/.test(pass)) {
+        document.getElementById('reg-error').textContent = 'Password must contain both letters and numbers';
         return;
     }
     try {

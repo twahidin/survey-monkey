@@ -714,6 +714,18 @@ async function doRegister() {
     const user = document.getElementById('auth-user').value.trim();
     const pass = document.getElementById('auth-pass').value;
     if (!user || !pass) return;
+    if (/\s/.test(user)) {
+        document.getElementById('auth-error').textContent = 'Username must not contain spaces';
+        return;
+    }
+    if (pass.length < 8) {
+        document.getElementById('auth-error').textContent = 'Password must be at least 8 characters';
+        return;
+    }
+    if (!/[a-zA-Z]/.test(pass) || !/[0-9]/.test(pass)) {
+        document.getElementById('auth-error').textContent = 'Password must contain both letters and numbers';
+        return;
+    }
     try {
         const res = await api('/api/auth/register', 'POST', { username: user, password: pass });
         token = res.token;

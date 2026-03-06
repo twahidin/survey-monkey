@@ -385,8 +385,19 @@ def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     response.set_cookie("admin_token", token, httponly=True, samesite="lax", max_age=86400)
     return {"token": token, "username": admin.username, "role": admin.role}
 
+def _validate_credentials(username: str, password: str):
+    """Validate username (no spaces) and password (min 8 alphanumeric chars)."""
+    if ' ' in username:
+        raise HTTPException(status_code=400, detail="Username must not contain spaces")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain both letters and numbers")
+
+
 @app.post("/api/auth/register")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    _validate_credentials(req.username, req.password)
     if db.query(AdminUser).filter(AdminUser.username == req.username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
     admin = create_admin_user(db, req.username, req.password)
@@ -1298,6 +1309,7 @@ def create_invite(db: Session = Depends(get_db), admin: AdminUser = Depends(get_
 
 @app.post("/api/auth/register-teacher")
 def register_teacher(req: TeacherRegister, db: Session = Depends(get_db)):
+    _validate_credentials(req.username, req.password)
     invite = db.query(InviteCode).filter(InviteCode.code == req.invite_code, InviteCode.used_by_id.is_(None)).first()
     if not invite:
         raise HTTPException(status_code=400, detail="Invalid or already used invite code")
