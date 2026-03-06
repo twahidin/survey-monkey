@@ -404,6 +404,8 @@
                 <div id="bulk-actions" style="display:none;margin-bottom:12px;align-items:center;gap:12px">
                     <span id="selected-count" style="font-size:0.85rem;color:var(--muted)">0 selected</span>
                     <button class="btn btn-danger btn-sm" onclick="bulkDeleteParticipants()">Delete Selected</button>
+                    <button class="btn btn-sm" onclick="downloadSelectedCSV()" style="background:var(--primary);color:#fff">Download CSV</button>
+                    <button class="btn btn-sm" onclick="downloadSelectedPDF()" style="background:var(--primary);color:#fff">Download PDF</button>
                 </div>
                 <div style="overflow-x:auto">
                     <table class="participant-table">
@@ -1008,6 +1010,68 @@ async function bulkDeleteParticipants() {
         await api(`/api/surveys/${currentSurveyId}/participants/bulk-delete`, 'POST', { participant_ids: ids });
         refreshDetail();
     } catch (e) { alert('Failed to delete: ' + e.message); }
+}
+
+function downloadSelectedCSV() {
+    if (!currentResults) return;
+    const ids = new Set([...document.querySelectorAll('.participant-cb:checked')].map(cb => cb.dataset.pid));
+    if (!ids.size) return;
+    const rows = [['Participant', 'Name', 'Status', 'Role', 'Message', 'Timestamp']];
+    currentResults.participants.forEach(p => {
+        if (!ids.has(p.id)) return;
+        const label = p.contact_name || 'P-' + p.id.substring(0, 8);
+        p.messages.forEach(m => {
+            if (m.content.startsWith('[TOOL_EVENTS]')) return;
+            rows.push([label, p.contact_name || '', p.status, m.role, m.content, m.timestamp || '']);
+        });
+    });
+    const csvEscape = v => { const s = String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (currentResults.survey.title || 'conversations') + '.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function downloadSelectedPDF() {
+    if (!currentResults) return;
+    const ids = new Set([...document.querySelectorAll('.participant-cb:checked')].map(cb => cb.dataset.pid));
+    if (!ids.size) return;
+    const selected = currentResults.participants.filter(p => ids.has(p.id));
+    const title = currentResults.survey.title || 'Conversations';
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:40px;color:#222}
+h1{font-size:1.3rem;margin-bottom:4px}
+.meta{font-size:0.8rem;color:#777;margin-bottom:16px}
+.msg{margin-bottom:10px;padding:8px 12px;border-radius:8px;max-width:85%}
+.msg.assistant{background:#e8f0fe;margin-right:auto}
+.msg.user{background:#f0f0f0;margin-left:auto}
+.role{font-weight:600;font-size:0.75rem;text-transform:uppercase;margin-bottom:2px;color:#555}
+.text{white-space:pre-wrap;font-size:0.9rem}
+.ts{font-size:0.7rem;color:#999;margin-top:2px}
+.participant{page-break-before:always}
+.participant:first-child{page-break-before:auto}
+@media print{body{margin:20px}}
+</style></head><body>`;
+    selected.forEach(p => {
+        const label = p.contact_name || 'P-' + p.id.substring(0, 8);
+        html += `<div class="participant"><h1>${label}</h1><div class="meta">Status: ${p.status} &bull; Messages: ${p.message_count}</div>`;
+        p.messages.forEach(m => {
+            if (m.content.startsWith('[TOOL_EVENTS]')) return;
+            const ts = m.timestamp ? new Date(m.timestamp).toLocaleString() : '';
+            const escaped = m.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            html += `<div class="msg ${m.role}"><div class="role">${m.role}</div><div class="text">${escaped}</div>${ts ? '<div class="ts">' + ts + '</div>' : ''}</div>`;
+        });
+        html += '</div>';
+    });
+    html += '</body></html>';
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => w.print();
 }
 
 function copySurveyLink() {
