@@ -135,7 +135,7 @@ def get_claude_client(api_key: str = None):
     key = api_key or ANTHROPIC_API_KEY
     if not key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
-    return anthropic.Anthropic(api_key=key)
+    return anthropic.AsyncAnthropic(api_key=key)
 
 
 def get_visible_admin_ids(db: Session, admin: AdminUser) -> list:
@@ -814,13 +814,13 @@ async def analyze_survey(
     async def analysis_stream():
         full_text = []
         try:
-            with client.messages.stream(
+            async with client.messages.stream(
                 model=CLAUDE_ANALYSIS_MODEL,
                 max_tokens=4096,
                 system=system_prompt,
                 messages=history,
             ) as stream:
-                for text in stream.text_stream:
+                async for text in stream.text_stream:
                     full_text.append(text)
                     yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
         except Exception as e:
@@ -911,7 +911,7 @@ def _generate_insights(survey, db: Session) -> dict:
     prompt = _build_insights_prompt(survey, participants_data)
     api_key = resolve_api_key(db, survey)
     client = get_claude_client(api_key)
-    response = client.messages.create(
+    response = await client.messages.create(
         model=CLAUDE_ANALYSIS_MODEL,
         max_tokens=4096,
         system="You are a survey data analyst. Return ONLY valid JSON, no markdown fences, no explanation.",
@@ -946,7 +946,7 @@ def _generate_insights(survey, db: Session) -> dict:
 
 
 @app.get("/api/surveys/{survey_id}/insights")
-def get_survey_insights(
+async def get_survey_insights(
     survey_id: str,
     request: Request,
     db: Session = Depends(get_db),
@@ -1026,7 +1026,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     api_key = resolve_api_key(db, survey)
     client = get_claude_client(api_key)
     try:
-        response = client.messages.create(
+        response = await client.messages.create(
             model=CLAUDE_CHAT_MODEL,
             max_tokens=1024,
             system=system,
@@ -1111,14 +1111,14 @@ async def _chat_stream_generator_v2(
     tool_uses = {}  # Track tool_use blocks being built by index
 
     try:
-        with client.messages.stream(
+        async with client.messages.stream(
             model=CLAUDE_CHAT_MODEL,
             max_tokens=1024,
             system=system,
             messages=history,
             tools=SURVEY_TOOLS,
         ) as stream:
-            for event in stream:
+            async for event in stream:
                 if event.type == "content_block_delta":
                     delta = event.delta
                     if delta.type == "text_delta":
