@@ -891,7 +891,7 @@ def _build_insights_prompt(survey, participants_data: list) -> str:
     )
 
 
-def _generate_insights(survey, db: Session) -> dict:
+async def _generate_insights(survey, db: Session) -> dict:
     participants_data = []
     for p in sorted(survey.participants, key=lambda x: x.started_at):
         msgs = sorted(p.messages, key=lambda m: m.created_at)
@@ -968,12 +968,12 @@ async def get_survey_insights(
         if age < 300:
             return {"insights": json.loads(cached.insights_json), "generated_at": cached.generated_at.isoformat(), "cached": True}
 
-    insights = _generate_insights(survey, db)
+    insights = await _generate_insights(survey, db)
     return {"insights": insights, "generated_at": datetime.now(timezone.utc).isoformat(), "cached": False}
 
 
 @app.post("/api/surveys/{survey_id}/insights/regenerate")
-def regenerate_survey_insights(
+async def regenerate_survey_insights(
     survey_id: str,
     request: Request,
     db: Session = Depends(get_db),
@@ -988,7 +988,7 @@ def regenerate_survey_insights(
     )
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
-    insights = _generate_insights(survey, db)
+    insights = await _generate_insights(survey, db)
     return {"insights": insights, "generated_at": datetime.now(timezone.utc).isoformat(), "cached": False}
 
 
