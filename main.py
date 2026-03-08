@@ -1105,31 +1105,45 @@ async def _process_tool_call(tool_name: str, tool_input: dict) -> list:
 async def _chat_stream_generator_v2(
     client, system: str, history: list, participant, db, near_limit: bool
 ):
-    """Stream text + tool results as SSE events."""
+    """Stream text + tool results as SSE events using true token-by-token streaming."""
     full_text = []
     tool_events = []
+    tool_uses = {}  # Track tool_use blocks being built by index
 
     try:
-        response = client.messages.create(
+        with client.messages.stream(
             model=CLAUDE_CHAT_MODEL,
             max_tokens=1024,
             system=system,
             messages=history,
             tools=SURVEY_TOOLS,
-        )
+        ) as stream:
+            for event in stream:
+                if event.type == "content_block_delta":
+                    delta = event.delta
+                    if delta.type == "text_delta":
+                        full_text.append(delta.text)
+                        yield f"data: {json.dumps({'t': 'chunk', 'v': delta.text})}\n\n"
+                    elif delta.type == "input_json_delta":
+                        idx = event.index
+                        if idx in tool_uses:
+                            tool_uses[idx]["input_json"] += delta.partial_json
+                elif event.type == "content_block_start":
+                    block = event.content_block
+                    if block.type == "tool_use":
+                        tool_uses[event.index] = {
+                            "name": block.name,
+                            "input_json": "",
+                        }
+                elif event.type == "content_block_stop":
+                    idx = event.index
+                    if idx in tool_uses:
+                        tool = tool_uses.pop(idx)
+                        tool_input = json.loads(tool["input_json"]) if tool["input_json"] else {}
+                        events = await _process_tool_call(tool["name"], tool_input)
+                        tool_events.extend(events)
 
-        for block in response.content:
-            if block.type == "text":
-                text = block.text
-                full_text.append(text)
-                chunk_size = 12
-                for i in range(0, len(text), chunk_size):
-                    chunk = text[i:i + chunk_size]
-                    yield f"data: {json.dumps({'t': 'chunk', 'v': chunk})}\n\n"
-            elif block.type == "tool_use":
-                events = await _process_tool_call(block.name, block.input)
-                tool_events.extend(events)
-
+        # Send tool events after stream completes
         for event in tool_events:
             yield f"data: {json.dumps(event)}\n\n"
 

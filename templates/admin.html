@@ -239,6 +239,40 @@
         }
         .analysis-input-area input:focus { border-color: var(--primary); }
 
+        /* ── Analysis Select Mode ── */
+        .analysis-toolbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; background: var(--glass);
+            border-bottom: 1px solid var(--glass-border); border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            min-height: 40px;
+        }
+        .analysis-toolbar .btn-select-toggle {
+            padding: 5px 14px; font-size: 0.78rem; font-weight: 600;
+            border: 1.5px solid var(--primary); color: var(--primary); background: transparent;
+            border-radius: 6px; cursor: pointer; transition: all 0.15s;
+        }
+        .analysis-toolbar .btn-select-toggle.active {
+            background: var(--primary); color: #fff;
+        }
+        .analysis-select-bar {
+            display: none; align-items: center; gap: 12px; font-size: 0.82rem; color: var(--muted);
+        }
+        .analysis-select-bar.visible { display: flex; }
+        .analysis-select-bar .btn-dl-pdf {
+            padding: 5px 14px; font-size: 0.78rem; font-weight: 600;
+            background: linear-gradient(135deg, var(--primary), var(--primary-end));
+            color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: transform 0.15s;
+        }
+        .analysis-select-bar .btn-dl-pdf:hover { transform: scale(1.03); }
+        .analysis-select-bar .btn-dl-pdf:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .analysis-msg-wrapper { display: flex; align-items: flex-start; gap: 8px; }
+        .analysis-msg-wrapper.user { justify-content: flex-end; }
+        .analysis-msg-cb {
+            display: none; margin-top: 10px; flex-shrink: 0; width: 16px; height: 16px;
+            accent-color: var(--primary); cursor: pointer;
+        }
+        .select-mode-active .analysis-msg-cb { display: block; }
+
         /* ── Charts ── */
         .chart-container {
             background: rgba(255,255,255,0.45); backdrop-filter: blur(12px);
@@ -427,7 +461,14 @@
                 <p style="color:var(--muted);margin-bottom:12px;font-size:0.85rem">
                     Chat with AI to analyze survey responses. Ask about themes, sentiment, insights.
                 </p>
-                <div class="analysis-chat">
+                <div class="analysis-chat" id="analysis-chat-container">
+                    <div class="analysis-toolbar">
+                        <button class="btn-select-toggle" onclick="toggleAnalysisSelect()">Select for Report</button>
+                        <div class="analysis-select-bar" id="analysis-select-bar">
+                            <span id="analysis-select-count">0 selected</span>
+                            <button class="btn-dl-pdf" id="analysis-dl-pdf" onclick="downloadAnalysisPDF()" disabled>Download PDF</button>
+                        </div>
+                    </div>
                     <div class="analysis-messages" id="analysis-messages"></div>
                     <div class="analysis-input-area">
                         <input id="analysis-input" placeholder="Ask about survey results..."
@@ -1242,6 +1283,25 @@ function sortInsightsTable(col) {
 }
 
 // ── Analysis Chat ──
+function wrapAnalysisMsg(msgEl, role, rawContent) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `analysis-msg-wrapper ${role}`;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'analysis-msg-cb';
+    cb.dataset.role = role;
+    cb.dataset.content = rawContent;
+    cb.addEventListener('change', updateAnalysisSelectBar);
+    if (role === 'user') {
+        wrapper.appendChild(msgEl);
+        wrapper.appendChild(cb);
+    } else {
+        wrapper.appendChild(cb);
+        wrapper.appendChild(msgEl);
+    }
+    return wrapper;
+}
+
 async function loadAnalysisHistory() {
     const msgs = await api(`/api/surveys/${currentSurveyId}/analysis-history`);
     const container = document.getElementById('analysis-messages');
@@ -1253,7 +1313,7 @@ async function loadAnalysisHistory() {
             el.innerHTML = renderMd(m.content);
             hydrateCharts(el);
         } else { el.textContent = m.content; }
-        container.appendChild(el);
+        container.appendChild(wrapAnalysisMsg(el, m.role, m.content));
     });
     container.scrollTop = container.scrollHeight;
 }
@@ -1268,14 +1328,15 @@ async function sendAnalysis() {
     const userEl = document.createElement('div');
     userEl.className = 'analysis-msg user';
     userEl.textContent = text;
-    container.appendChild(userEl);
+    container.appendChild(wrapAnalysisMsg(userEl, 'user', text));
     container.scrollTop = container.scrollHeight;
 
     document.getElementById('analysis-send').disabled = true;
     const assistantEl = document.createElement('div');
     assistantEl.className = 'analysis-msg assistant';
     assistantEl.textContent = '';
-    container.appendChild(assistantEl);
+    const assistantWrapper = wrapAnalysisMsg(assistantEl, 'assistant', '');
+    container.appendChild(assistantWrapper);
 
     try {
         const res = await fetch(`/api/surveys/${currentSurveyId}/analyze`, {
@@ -1311,8 +1372,12 @@ async function sendAnalysis() {
         }
         // Render markdown + charts after stream completes
         if (assistantEl.textContent && !assistantEl.textContent.startsWith('Error:')) {
-            assistantEl.innerHTML = renderMd(assistantEl.textContent);
+            const rawText = assistantEl.textContent;
+            assistantEl.innerHTML = renderMd(rawText);
             hydrateCharts(assistantEl);
+            // Update the checkbox data-content with final text
+            const cb = assistantWrapper.querySelector('.analysis-msg-cb');
+            if (cb) cb.dataset.content = rawText;
         }
     } catch (e) {
         assistantEl.textContent = 'Error: ' + e.message;
@@ -1320,6 +1385,70 @@ async function sendAnalysis() {
         document.getElementById('analysis-send').disabled = false;
         input.focus();
     }
+}
+
+// ── Analysis Select Mode ──
+function toggleAnalysisSelect() {
+    const container = document.getElementById('analysis-chat-container');
+    const btn = container.querySelector('.btn-select-toggle');
+    const bar = document.getElementById('analysis-select-bar');
+    const active = container.classList.toggle('select-mode-active');
+    btn.classList.toggle('active', active);
+    bar.classList.toggle('visible', active);
+    if (!active) {
+        container.querySelectorAll('.analysis-msg-cb').forEach(cb => cb.checked = false);
+        updateAnalysisSelectBar();
+    }
+}
+
+function updateAnalysisSelectBar() {
+    const checked = document.querySelectorAll('.analysis-msg-cb:checked');
+    const count = checked.length;
+    document.getElementById('analysis-select-count').textContent = `${count} selected`;
+    document.getElementById('analysis-dl-pdf').disabled = count === 0;
+}
+
+function downloadAnalysisPDF() {
+    const checked = document.querySelectorAll('.analysis-msg-cb:checked');
+    if (!checked.length) return;
+
+    const surveyTitle = document.getElementById('detail-title') ?
+        document.getElementById('detail-title').textContent : 'Survey Analysis';
+
+    let messagesHtml = '';
+    checked.forEach(cb => {
+        const role = cb.dataset.role;
+        const content = cb.dataset.content;
+        const roleLabel = role === 'user' ? 'You' : 'AI Assistant';
+        const roleColor = role === 'user' ? '#6366f1' : '#059669';
+        const contentHtml = role === 'assistant' ? renderMd(content) : content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        messagesHtml += `
+            <div style="margin-bottom:20px;padding:16px;border:1px solid #e5e7eb;border-radius:8px;background:${role === 'user' ? '#f5f3ff' : '#f0fdf4'};">
+                <div style="font-weight:700;font-size:0.8rem;text-transform:uppercase;color:${roleColor};margin-bottom:6px;">${roleLabel}</div>
+                <div style="font-size:0.92rem;line-height:1.6;white-space:pre-wrap;">${contentHtml}</div>
+            </div>`;
+    });
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Analysis Report</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; color: #1e1b4b; max-width: 800px; margin: 0 auto; }
+        h1 { font-size: 1.5rem; margin-bottom: 4px; }
+        .subtitle { color: #6b7280; font-size: 0.88rem; margin-bottom: 28px; }
+        table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+        th, td { border: 1px solid #d1d5db; padding: 6px 10px; text-align: left; font-size: 0.85rem; }
+        th { background: #f3f4f6; }
+        @media print { body { padding: 20px; } }
+    </style></head><body>
+    <h1>${surveyTitle}</h1>
+    <div class="subtitle">Analysis Report &mdash; ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    ${messagesHtml}
+    </body></html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 400);
 }
 
 // ── Chart ID counter ──
