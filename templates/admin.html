@@ -255,7 +255,7 @@
             background: var(--primary); color: #fff;
         }
         .analysis-select-bar {
-            display: none; align-items: center; gap: 12px; font-size: 0.82rem; color: var(--muted);
+            display: none; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted);
         }
         .analysis-select-bar.visible { display: flex; }
         .analysis-select-bar .btn-dl-pdf {
@@ -265,6 +265,13 @@
         }
         .analysis-select-bar .btn-dl-pdf:hover { transform: scale(1.03); }
         .analysis-select-bar .btn-dl-pdf:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .analysis-select-bar .sel-nav-btn {
+            padding: 3px 8px; font-size: 0.82rem; font-weight: 600;
+            border: 1.5px solid var(--border); color: var(--muted); background: rgba(255,255,255,0.5);
+            border-radius: 5px; cursor: pointer; line-height: 1;
+        }
+        .analysis-select-bar .sel-nav-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .analysis-select-bar label { cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
         .analysis-msg-wrapper { display: flex; align-items: flex-start; gap: 8px; }
         .analysis-msg-wrapper.user { justify-content: flex-end; }
         .analysis-msg-cb {
@@ -465,7 +472,10 @@
                     <div class="analysis-toolbar">
                         <button class="btn-select-toggle" onclick="toggleAnalysisSelect()">Select for Report</button>
                         <div class="analysis-select-bar" id="analysis-select-bar">
+                            <label><input type="checkbox" id="analysis-select-all" onchange="toggleSelectAll(this.checked)"> All</label>
                             <span id="analysis-select-count">0 selected</span>
+                            <button class="sel-nav-btn" onclick="navAnalysisMsg(-1)" title="Previous message">&#9650;</button>
+                            <button class="sel-nav-btn" onclick="navAnalysisMsg(1)" title="Next message">&#9660;</button>
                             <button class="btn-dl-pdf" id="analysis-dl-pdf" onclick="downloadAnalysisPDF()" disabled>Download PDF</button>
                         </div>
                     </div>
@@ -1397,15 +1407,40 @@ function toggleAnalysisSelect() {
     bar.classList.toggle('visible', active);
     if (!active) {
         container.querySelectorAll('.analysis-msg-cb').forEach(cb => cb.checked = false);
+        _navIdx = -1;
         updateAnalysisSelectBar();
     }
 }
 
+function toggleSelectAll(checked) {
+    document.querySelectorAll('.analysis-msg-cb').forEach(cb => cb.checked = checked);
+    updateAnalysisSelectBar();
+}
+
+let _navIdx = -1;
+function navAnalysisMsg(dir) {
+    const wrappers = [...document.querySelectorAll('.analysis-msg-wrapper')];
+    if (!wrappers.length) return;
+    _navIdx = Math.max(0, Math.min(wrappers.length - 1, _navIdx + dir));
+    const target = wrappers[_navIdx];
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Briefly highlight
+    target.style.outline = '2px solid var(--primary)';
+    target.style.outlineOffset = '2px';
+    setTimeout(() => { target.style.outline = ''; target.style.outlineOffset = ''; }, 1200);
+}
+
 function updateAnalysisSelectBar() {
+    const all = document.querySelectorAll('.analysis-msg-cb');
     const checked = document.querySelectorAll('.analysis-msg-cb:checked');
     const count = checked.length;
     document.getElementById('analysis-select-count').textContent = `${count} selected`;
     document.getElementById('analysis-dl-pdf').disabled = count === 0;
+    const selAllCb = document.getElementById('analysis-select-all');
+    if (selAllCb) {
+        selAllCb.checked = all.length > 0 && count === all.length;
+        selAllCb.indeterminate = count > 0 && count < all.length;
+    }
 }
 
 function downloadAnalysisPDF() {
