@@ -477,6 +477,7 @@
                             <button class="sel-nav-btn" onclick="navAnalysisMsg(-1)" title="Previous message">&#9650;</button>
                             <button class="sel-nav-btn" onclick="navAnalysisMsg(1)" title="Next message">&#9660;</button>
                             <button class="btn-dl-pdf" id="analysis-dl-pdf" onclick="downloadAnalysisPDF()" disabled>Download PDF</button>
+                            <button class="btn-dl-pdf" id="analysis-del-btn" onclick="deleteAnalysisMessages()" disabled style="background:var(--danger)">Delete</button>
                         </div>
                     </div>
                     <div class="analysis-messages" id="analysis-messages"></div>
@@ -1293,7 +1294,7 @@ function sortInsightsTable(col) {
 }
 
 // ── Analysis Chat ──
-function wrapAnalysisMsg(msgEl, role, rawContent) {
+function wrapAnalysisMsg(msgEl, role, rawContent, msgId) {
     const wrapper = document.createElement('div');
     wrapper.className = `analysis-msg-wrapper ${role}`;
     const cb = document.createElement('input');
@@ -1301,6 +1302,7 @@ function wrapAnalysisMsg(msgEl, role, rawContent) {
     cb.className = 'analysis-msg-cb';
     cb.dataset.role = role;
     cb.dataset.content = rawContent;
+    if (msgId) cb.dataset.msgId = msgId;
     cb.addEventListener('change', updateAnalysisSelectBar);
     if (role === 'user') {
         wrapper.appendChild(msgEl);
@@ -1323,7 +1325,7 @@ async function loadAnalysisHistory() {
             el.innerHTML = renderMd(m.content);
             hydrateCharts(el);
         } else { el.textContent = m.content; }
-        container.appendChild(wrapAnalysisMsg(el, m.role, m.content));
+        container.appendChild(wrapAnalysisMsg(el, m.role, m.content, m.id));
     });
     container.scrollTop = container.scrollHeight;
 }
@@ -1417,6 +1419,21 @@ function toggleSelectAll(checked) {
     updateAnalysisSelectBar();
 }
 
+async function deleteAnalysisMessages() {
+    const checked = [...document.querySelectorAll('.analysis-msg-cb:checked')];
+    if (!checked.length) return;
+    if (!confirm(`Delete ${checked.length} message${checked.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+
+    const ids = checked.map(cb => cb.dataset.msgId).filter(Boolean);
+    if (ids.length) {
+        await api(`/api/surveys/${currentSurveyId}/analysis-delete`, 'POST', { message_ids: ids });
+    }
+    _navIdx = -1;
+    // Reload to re-sync with backend
+    await loadAnalysisHistory();
+    updateAnalysisSelectBar();
+}
+
 let _navIdx = -1;
 function navAnalysisMsg(dir) {
     const wrappers = [...document.querySelectorAll('.analysis-msg-wrapper')];
@@ -1436,6 +1453,7 @@ function updateAnalysisSelectBar() {
     const count = checked.length;
     document.getElementById('analysis-select-count').textContent = `${count} selected`;
     document.getElementById('analysis-dl-pdf').disabled = count === 0;
+    document.getElementById('analysis-del-btn').disabled = count === 0;
     const selAllCb = document.getElementById('analysis-select-all');
     if (selAllCb) {
         selAllCb.checked = all.length > 0 && count === all.length;

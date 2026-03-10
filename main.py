@@ -854,7 +854,34 @@ def get_analysis_history(
         .order_by(AnalysisMessage.created_at)
         .all()
     )
-    return [{"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in messages]
+    return [{"id": str(m.id), "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in messages]
+
+
+class DeleteAnalysisRequest(BaseModel):
+    message_ids: list[str]
+
+
+@app.post("/api/surveys/{survey_id}/analysis-delete")
+def delete_analysis_messages(
+    survey_id: str,
+    req: DeleteAnalysisRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    if not req.message_ids:
+        return {"deleted": 0}
+    count = (
+        db.query(AnalysisMessage)
+        .filter(
+            AnalysisMessage.survey_id == survey_id,
+            AnalysisMessage.admin_id == admin.id,
+            AnalysisMessage.id.in_(req.message_ids),
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": count}
 
 
 # ══════════════════════════════════════════════════════════════════
