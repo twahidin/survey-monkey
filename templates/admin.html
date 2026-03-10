@@ -213,17 +213,25 @@
             background: rgba(255,255,255,0.3); border-radius: var(--radius-sm) var(--radius-sm) 0 0;
             display: flex; flex-direction: column; gap: 10px;
         }
-        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 0.88rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
-        .analysis-msg table { border-collapse: collapse; margin: 8px 0; font-size: 0.82rem; width: 100%; white-space: normal; }
+        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 0.88rem; line-height: 1.5; word-wrap: break-word; }
+        .analysis-msg table { border-collapse: collapse; margin: 8px 0; font-size: 0.82rem; width: 100%; }
         .analysis-msg th, .analysis-msg td { border: 1px solid rgba(0,0,0,0.12); padding: 5px 8px; text-align: left; }
         .analysis-msg th { background: rgba(99,102,241,0.08); font-weight: 600; }
         .analysis-msg ul, .analysis-msg ol { margin: 4px 0 4px 18px; }
         .analysis-msg p { margin: 4px 0; }
+        .analysis-msg h1, .analysis-msg h2, .analysis-msg h3, .analysis-msg h4 { margin: 10px 0 4px; }
+        .analysis-msg h1 { font-size: 1.1rem; }
+        .analysis-msg h2 { font-size: 1rem; }
+        .analysis-msg h3 { font-size: 0.95rem; }
+        .analysis-msg hr { border: none; border-top: 1px solid rgba(0,0,0,0.12); margin: 10px 0; }
+        .analysis-msg blockquote { border-left: 3px solid var(--primary); padding-left: 10px; margin: 6px 0; color: var(--muted); font-style: italic; }
         .analysis-msg.user {
+            white-space: pre-wrap;
             background: linear-gradient(135deg, var(--primary), var(--primary-end));
             color: #fff; align-self: flex-end; border-bottom-right-radius: 4px;
         }
         .analysis-msg.assistant {
+            white-space: normal;
             background: var(--glass-strong); backdrop-filter: blur(12px);
             align-self: flex-start; border-bottom-left-radius: 4px;
             border: 1px solid var(--glass-border);
@@ -1529,10 +1537,15 @@ function downloadAnalysisPDF() {
         img { max-width: 100%; height: auto; }
         .chart-container { margin: 12px 0; }
         .chart-title { font-weight: 600; font-size: 0.9rem; text-align: center; margin-bottom: 6px; }
-        h1, h2, h3 { margin-top: 12px; margin-bottom: 6px; }
+        h2 { font-size: 1.2rem; margin-top: 16px; margin-bottom: 6px; }
+        h3 { font-size: 1.05rem; margin-top: 12px; margin-bottom: 4px; }
+        h4 { font-size: 0.95rem; margin-top: 10px; margin-bottom: 4px; }
         p { margin: 4px 0; }
         ul, ol { margin: 4px 0 4px 18px; }
-        blockquote { border-left: 3px solid #6366f1; padding-left: 12px; color: #4b5563; margin: 8px 0; }
+        li { margin: 2px 0; }
+        blockquote { border-left: 3px solid #6366f1; padding-left: 12px; color: #4b5563; margin: 8px 0; font-style: italic; }
+        hr { border: none; border-top: 1px solid #d1d5db; margin: 14px 0; }
+        code { background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; font-size: 0.85em; }
         @media print { body { padding: 20px; } }
     </style></head><body>
     <h1>${surveyTitle}</h1>
@@ -1580,23 +1593,68 @@ function renderMd(text) {
         tableRows = [];
         return t + '</table>';
     }
+    let listItems = [];
+    let blockquoteLines = [];
+    function flushList() {
+        if (!listItems.length) return '';
+        const out = '<ul>' + listItems.map(li => `<li>${li}</li>`).join('') + '</ul>';
+        listItems = [];
+        return out;
+    }
+    function flushBlockquote() {
+        if (!blockquoteLines.length) return '';
+        const out = '<blockquote>' + blockquoteLines.join('<br>') + '</blockquote>';
+        blockquoteLines = [];
+        return out;
+    }
+    function inlineFmt(l) {
+        l = l.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+        l = l.replace(/\*(.+?)\*/g,'<em>$1</em>');
+        l = l.replace(/`([^`]+)`/g,'<code style="background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:0.85em">$1</code>');
+        return l;
+    }
     for (const line of lines) {
-        // Check for chart placeholder
         const chartMatch = line.match(/\x00CHART:(chart-\d+)\x00/);
         if (chartMatch) {
-            html += flushTable();
-            html += `<div class="chart-placeholder" data-chart-id="${chartMatch[1]}"></div>\n`;
+            html += flushTable() + flushList() + flushBlockquote();
+            html += `<div class="chart-placeholder" data-chart-id="${chartMatch[1]}"></div>`;
         } else if (/^\s*\|/.test(line) && line.includes('|', 1)) {
+            html += flushList() + flushBlockquote();
             tableRows.push(line);
+        } else if (/^\s*[-*]\s+/.test(line)) {
+            html += flushTable() + flushBlockquote();
+            listItems.push(inlineFmt(line.replace(/^\s*[-*]\s+/, '')));
+        } else if (/^\s*\d+\.\s+/.test(line)) {
+            html += flushTable() + flushBlockquote();
+            listItems.push(inlineFmt(line.replace(/^\s*\d+\.\s+/, '')));
+        } else if (/^>\s?/.test(line)) {
+            html += flushTable() + flushList();
+            blockquoteLines.push(inlineFmt(line.replace(/^>\s?/, '')));
         } else {
-            html += flushTable();
+            html += flushTable() + flushList() + flushBlockquote();
             let l = line;
-            l = l.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-            l = l.replace(/\*(.+?)\*/g,'<em>$1</em>');
-            html += l + '\n';
+            // Horizontal rules
+            if (/^\s*[-*_]{3,}\s*$/.test(l)) {
+                html += '<hr>';
+                continue;
+            }
+            // Headings
+            const hMatch = l.match(/^(#{1,4})\s+(.+)/);
+            if (hMatch) {
+                const level = hMatch[1].length;
+                html += `<h${level}>${inlineFmt(hMatch[2])}</h${level}>`;
+                continue;
+            }
+            l = inlineFmt(l);
+            // Blank line = paragraph break, otherwise wrap in <p>
+            if (l.trim() === '') {
+                html += '<br>';
+            } else {
+                html += `<p>${l}</p>`;
+            }
         }
     }
-    html += flushTable();
+    html += flushTable() + flushList() + flushBlockquote();
     return html;
 }
 
