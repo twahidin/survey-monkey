@@ -830,6 +830,7 @@ async def analyze_survey(
 
     async def analysis_stream():
         full_text = []
+        yield f"data: {json.dumps({'t': 'status', 'v': 'Analyzing survey data...'})}\n\n"
         try:
             async with client.messages.stream(
                 model=CLAUDE_ANALYSIS_MODEL,
@@ -841,7 +842,7 @@ async def analyze_survey(
                     full_text.append(text)
                     yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
         except Exception as e:
-            logger.error(f"Analysis stream error: {e}")
+            logger.error(f"Analysis stream error for survey {survey_id}: {e}", exc_info=True)
             yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
             return
 
