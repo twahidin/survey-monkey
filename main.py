@@ -1,6 +1,7 @@
 """Main FastAPI application - Survey Chatbot with Admin Dashboard."""
 
 import json
+import logging
 import os
 import uuid
 import secrets
@@ -27,6 +28,8 @@ from auth import (
     decode_token, hash_password, update_admin_password,
     encrypt_api_key, decrypt_api_key,
 )
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Survey Chatbot", version="1.0.0")
 if os.path.isdir("static"):
@@ -782,7 +785,15 @@ async def analyze_survey(
         .order_by(AnalysisMessage.created_at)
         .all()
     )
-    history = [{"role": m.role, "content": m.content} for m in prior]
+    history = [{"role": m.role, "content": m.content} for m in prior if m.content and m.content.strip()]
+    # Ensure alternating roles (Claude requires this) — deduplicate consecutive same-role messages
+    deduped = []
+    for msg in history:
+        if deduped and deduped[-1]["role"] == msg["role"]:
+            deduped[-1]["content"] += "\n\n" + msg["content"]
+        else:
+            deduped.append(msg)
+    history = deduped
     history.append({"role": "user", "content": req.message})
 
     # Save user message
@@ -828,10 +839,15 @@ async def analyze_survey(
             return
 
         assistant_text = "".join(full_text)
-        db.add(AnalysisMessage(
-            survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text
-        ))
-        db.commit()
+        if assistant_text.strip():
+            try:
+                db.add(AnalysisMessage(
+                    survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text
+                ))
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to save analysis message: {e}")
+                db.rollback()
         yield f"data: {json.dumps({'t': 'done'})}\n\n"
 
     return StreamingResponse(

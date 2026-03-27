@@ -1327,6 +1327,7 @@ async function loadAnalysisHistory() {
     const container = document.getElementById('analysis-messages');
     container.innerHTML = '';
     msgs.forEach(m => {
+        if (m.role === 'assistant' && (!m.content || !m.content.trim())) return;
         const el = document.createElement('div');
         el.className = `analysis-msg ${m.role}`;
         if (m.role === 'assistant') {
