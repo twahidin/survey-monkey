@@ -113,7 +113,7 @@ def on_startup():
 # ──────────────────────────── Helpers ────────────────────────────
 
 def get_current_admin(request: Request, db: Session = Depends(get_db)) -> AdminUser:
-    token = request.cookies.get("admin_token") or request.headers.get("Authorization", "").replace("Bearer ", "")
+    token = request.cookies.get("admin_token") or request.headers.get("Authorization", "").replace("Bearer ", "") or request.query_params.get("token", "")
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     payload = decode_token(token)
@@ -734,6 +734,55 @@ def get_survey_results(
         },
         "participants": participants_data,
     }
+
+
+@app.get("/api/surveys/{survey_id}/download-conversations")
+def download_conversations(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = (
+        db.query(Survey)
+        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
+        .options(joinedload(Survey.participants).joinedload(Participant.messages))
+        .first()
+    )
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    lines = []
+    lines.append(f"Survey: {survey.title}")
+    lines.append(f"Topic: {survey.topic}")
+    lines.append(f"Status: {survey.status.value}")
+    lines.append(f"Total participants: {len(survey.participants)}")
+    lines.append(f"Exported: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+    lines.append("=" * 60)
+
+    for p in sorted(survey.participants, key=lambda x: x.started_at):
+        msgs = sorted(p.messages, key=lambda m: m.created_at)
+        chat_msgs = [m for m in msgs if not m.content.startswith("[TOOL_EVENTS]")]
+        if not chat_msgs:
+            continue
+        status_label = p.status.value
+        duration = f"{round(p.duration_seconds/60, 1)} min" if p.duration_seconds else "in progress"
+        lines.append("")
+        lines.append(f"--- Participant {str(p.id)[:8]} | {status_label} | {duration} ---")
+        if p.contact_name:
+            lines.append(f"Name: {p.contact_name}")
+        for m in chat_msgs:
+            role_label = "Participant" if m.role == "user" else "Bot"
+            lines.append(f"  [{role_label}]: {m.content}")
+
+    content = "\n".join(lines)
+    filename = f"{survey.title.replace(' ', '_')}_conversations.txt"
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ══════════════════════════════════════════════════════════════════

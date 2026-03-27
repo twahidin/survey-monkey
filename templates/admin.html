@@ -466,7 +466,10 @@
 
             <!-- Conversations Tab -->
             <div class="tab-content" id="tab-conversation">
-                <p style="color:var(--muted);margin-bottom:12px;font-size:0.88rem">Select a participant:</p>
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                    <p style="color:var(--muted);font-size:0.88rem;margin:0">Select a participant:</p>
+                    <button class="btn btn-sm" onclick="downloadConversations()" style="margin-left:auto">Download All (TXT)</button>
+                </div>
                 <select id="convo-select" onchange="showConversation(this.value)" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:16px;font-size:0.88rem;background:rgba(255,255,255,0.5)"></select>
                 <div class="convo-viewer" id="convo-viewer"></div>
             </div>
@@ -1007,6 +1010,10 @@ function selectParticipant(idx) {
     switchTab('conversation', document.querySelectorAll('.tab')[2]);
     document.getElementById('convo-select').value = idx;
     showConversation(idx);
+}
+
+function downloadConversations() {
+    window.open(`/api/surveys/${currentSurveyId}/download-conversations?token=${token}`, '_blank');
 }
 
 function showConversation(idx) {
