@@ -944,7 +944,14 @@ async def _generate_insights(survey, db: Session) -> dict:
         system="You are a survey data analyst. Return ONLY valid JSON, no markdown fences, no explanation.",
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = response.content[0].text.strip()
+    # Extract text from response, handling cases where content blocks may not be text type
+    raw = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            raw = block.text.strip()
+            break
+    if not raw:
+        return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": [], "error": "No text in AI response"}
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
     if raw.endswith("```"):
