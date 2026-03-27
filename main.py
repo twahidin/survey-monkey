@@ -758,15 +758,15 @@ async def analyze_survey(
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    # Build survey data summary for context (filter out tool events, cap total size)
+    # Build survey data summary — only participant (user) responses, not bot messages
     all_conversations = []
     for p in survey.participants:
         if p.messages:
-            chat_msgs = [m for m in sorted(p.messages, key=lambda x: x.created_at)
-                         if not m.content.startswith("[TOOL_EVENTS]")]
-            if not chat_msgs:
+            user_msgs = [m.content for m in sorted(p.messages, key=lambda x: x.created_at)
+                         if m.role == 'user' and not m.content.startswith("[TOOL_EVENTS]")]
+            if not user_msgs:
                 continue
-            conv = "\n".join(f"  {m.role}: {m.content}" for m in chat_msgs)
+            conv = "\n".join(f"  - {msg}" for msg in user_msgs)
             status_label = p.status.value
             duration_label = f"{round(p.duration_seconds/60, 1)} min" if p.duration_seconds else "in progress"
             all_conversations.append(f"[Participant {str(p.id)[:8]} | {status_label} | {duration_label}]\n{conv}")
@@ -774,12 +774,11 @@ async def analyze_survey(
     survey_context = (
         f"Survey: {survey.title}\n"
         f"Topic: {survey.topic}\n"
-        f"System Prompt: {survey.system_prompt}\n"
         f"Total participants: {len(survey.participants)}\n"
         f"Completed: {survey.completed_participants_count}\n"
         f"Active: {survey.active_participants_count}\n\n"
-        f"--- ALL CONVERSATIONS ---\n\n" +
-        "\n\n".join(all_conversations) if all_conversations else "No conversations yet."
+        f"--- PARTICIPANT RESPONSES ---\n\n" +
+        "\n\n".join(all_conversations) if all_conversations else "No responses yet."
     )
 
     # Load prior analysis messages
@@ -927,19 +926,21 @@ def _build_insights_prompt(survey, participants_data: list) -> str:
     convos = []
     for p in participants_data:
         if p["messages"]:
-            msgs = "\n".join(
-                f"  {m['role']}: {m['content']}"
-                for m in p["messages"]
-                if not m["content"].startswith("[TOOL_EVENTS]")
-            )
-            convos.append(f"[Participant {p['id'][:8]} | {p['status']} | {p['message_count']} msgs]\n{msgs}")
+            # Only include participant (user) responses — bot messages are not needed for analysis
+            user_msgs = [
+                m['content'] for m in p["messages"]
+                if m['role'] == 'user' and not m["content"].startswith("[TOOL_EVENTS]")
+            ]
+            if not user_msgs:
+                continue
+            msgs = "\n".join(f"  - {msg}" for msg in user_msgs)
+            convos.append(f"[Participant {p['id'][:8]} | {p['status']} | {len(user_msgs)} responses]\n{msgs}")
 
     return (
-        f"Analyze these survey conversations and return a JSON object.\n\n"
+        f"Analyze these survey participant responses and return a JSON object.\n\n"
         f"Survey: {survey.title}\nTopic: {survey.topic}\n"
-        f"System Prompt: {survey.system_prompt}\n"
         f"Total participants: {len(participants_data)}\n\n"
-        f"--- CONVERSATIONS ---\n\n" + "\n\n".join(convos) + "\n\n"
+        f"--- PARTICIPANT RESPONSES ---\n\n" + "\n\n".join(convos) + "\n\n"
         f"Return ONLY valid JSON with this exact structure:\n"
         f'{{\n'
         f'  "sentiment": {{"positive": <count>, "neutral": <count>, "negative": <count>}},\n'
