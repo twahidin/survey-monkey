@@ -810,8 +810,8 @@ async def analyze_survey(
     api_key = resolve_api_key(db, survey)
     client = get_claude_client(api_key)
     system_prompt = (
-        "You are a survey data analyst working on an authorized educational research platform. "
-        "The survey data below has been collected with informed consent from adult participants for academic research purposes. "
+        "You are a survey data analyst working on an authorized, school-sanctioned data collection platform. "
+        "The survey data below has been collected with informed consent from adult participants as part of an approved school research initiative. "
         "You have access to all the survey conversation data below. "
         "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
         "about the survey results. Be specific and cite participant responses when relevant.\n\n"
@@ -969,7 +969,7 @@ async def _generate_insights(survey, db: Session) -> dict:
         response = await client.messages.create(
             model=CLAUDE_ANALYSIS_MODEL,
             max_tokens=4096,
-            system="You are a survey data analyst working on an authorized educational research platform. The survey data has been collected with informed consent from adult participants for academic research purposes. Your role is to analyze aggregated response patterns. Return ONLY valid JSON, no markdown fences, no explanation.",
+            system="You are a survey data analyst working on an authorized, school-sanctioned data collection platform. The survey data has been collected with informed consent from adult participants as part of an approved school research initiative. Your role is to analyze aggregated response patterns. Return ONLY valid JSON, no markdown fences, no explanation.",
             messages=[{"role": "user", "content": prompt}],
         )
     except Exception as e:
