@@ -1182,11 +1182,17 @@ async function loadInsights() {
     try {
         const data = await api(`/api/surveys/${currentSurveyId}/insights`);
         currentInsights = data.insights;
-        renderInsights(data.insights);
-        document.getElementById('insights-loading').classList.add('hidden');
-        document.getElementById('insights-content').classList.remove('hidden');
+        if (data.insights && data.insights.error) {
+            document.getElementById('insights-loading').textContent = 'Error: ' + data.insights.error;
+            document.getElementById('insights-loading').style.color = '#ef4444';
+        } else {
+            renderInsights(data.insights);
+            document.getElementById('insights-loading').classList.add('hidden');
+            document.getElementById('insights-content').classList.remove('hidden');
+        }
     } catch (e) {
-        document.getElementById('insights-loading').textContent = 'No data available yet.';
+        document.getElementById('insights-loading').textContent = 'Error loading insights: ' + e.message;
+        document.getElementById('insights-loading').style.color = '#ef4444';
     }
 }
 

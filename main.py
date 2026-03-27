@@ -960,14 +960,19 @@ async def _generate_insights(survey, db: Session) -> dict:
         return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": []}
 
     prompt = _build_insights_prompt(survey, participants_data)
+    logger.info(f"Generating insights for survey {survey.id}: {len(participants_data)} participants, prompt length {len(prompt)} chars")
     api_key = resolve_api_key(db, survey)
     client = get_claude_client(api_key)
-    response = await client.messages.create(
-        model=CLAUDE_ANALYSIS_MODEL,
-        max_tokens=4096,
-        system="You are a survey data analyst. Return ONLY valid JSON, no markdown fences, no explanation.",
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = await client.messages.create(
+            model=CLAUDE_ANALYSIS_MODEL,
+            max_tokens=4096,
+            system="You are a survey data analyst. Return ONLY valid JSON, no markdown fences, no explanation.",
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as e:
+        logger.error(f"Claude API error generating insights: {e}", exc_info=True)
+        return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": [], "error": f"AI API error: {str(e)}"}
     # Extract text from response, handling cases where content blocks may not be text type
     raw = ""
     for block in response.content:
@@ -975,6 +980,7 @@ async def _generate_insights(survey, db: Session) -> dict:
             raw = block.text.strip()
             break
     if not raw:
+        logger.warning(f"No text in Claude response for insights. Stop reason: {response.stop_reason}, content types: {[type(b).__name__ for b in response.content]}")
         return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": [], "error": "No text in AI response"}
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
