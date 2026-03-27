@@ -758,11 +758,15 @@ async def analyze_survey(
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    # Build survey data summary for context
+    # Build survey data summary for context (filter out tool events, cap total size)
     all_conversations = []
     for p in survey.participants:
         if p.messages:
-            conv = "\n".join(f"  {m.role}: {m.content}" for m in sorted(p.messages, key=lambda x: x.created_at))
+            chat_msgs = [m for m in sorted(p.messages, key=lambda x: x.created_at)
+                         if not m.content.startswith("[TOOL_EVENTS]")]
+            if not chat_msgs:
+                continue
+            conv = "\n".join(f"  {m.role}: {m.content}" for m in chat_msgs)
             status_label = p.status.value
             duration_label = f"{round(p.duration_seconds/60, 1)} min" if p.duration_seconds else "in progress"
             all_conversations.append(f"[Participant {str(p.id)[:8]} | {status_label} | {duration_label}]\n{conv}")
@@ -786,7 +790,8 @@ async def analyze_survey(
         .all()
     )
     history = [{"role": m.role, "content": m.content} for m in prior if m.content and m.content.strip()]
-    # Ensure alternating roles (Claude requires this) — deduplicate consecutive same-role messages
+    history.append({"role": "user", "content": req.message})
+    # Ensure alternating roles (Claude requires this) — merge consecutive same-role messages
     deduped = []
     for msg in history:
         if deduped and deduped[-1]["role"] == msg["role"]:
@@ -794,7 +799,6 @@ async def analyze_survey(
         else:
             deduped.append(msg)
     history = deduped
-    history.append({"role": "user", "content": req.message})
 
     # Save user message
     db.add(AnalysisMessage(
@@ -822,6 +826,8 @@ async def analyze_survey(
         f"{survey_context}"
     )
 
+    logger.info(f"Analysis request: survey={survey_id}, history_len={len(history)}, context_chars={len(survey_context)}")
+
     async def analysis_stream():
         full_text = []
         try:
@@ -835,6 +841,7 @@ async def analyze_survey(
                     full_text.append(text)
                     yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
         except Exception as e:
+            logger.error(f"Analysis stream error: {e}")
             yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
             return
 
