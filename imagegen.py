@@ -100,7 +100,7 @@ async def _openrouter(cfg: LLMConfig, prompt: str):
         "Authorization": f"Bearer {cfg.image_api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": APP_URL,
-        "X-Title": "Survey Chatbot",
+        "X-Title": "Ponder",
     }
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
         resp = await client.post(f"{OPENROUTER_BASE_URL}/chat/completions", headers=headers, json=payload)

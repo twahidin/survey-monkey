@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Survey Studio</title>
+    <title>Ponder · Teacher Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -249,8 +249,8 @@
 <!-- AUTH SCREEN -->
 <div id="auth-screen" class="auth-wrapper">
     <div class="auth-card">
-        <div class="brand-mark">S</div>
-        <h1>Survey Studio</h1>
+        <div class="brand-mark">P</div>
+        <h1>Ponder</h1>
         <p class="sub">Sign in to design conversations and analyse responses</p>
         <div id="login-form">
             <div class="form-group"><label>Username</label><input id="auth-user" placeholder="admin" autocomplete="username"></div>
@@ -266,7 +266,7 @@
 <!-- DASHBOARD -->
 <div id="dashboard" class="hidden">
     <div class="topbar">
-        <div class="brand" onclick="showList()"><div class="mark">S</div><span>Survey Studio</span></div>
+        <div class="brand" onclick="showList()"><div class="mark">P</div><span>Ponder <span style="font-weight:500;color:var(--muted)">· Teacher Studio</span></span></div>
         <div class="user-info">
             <span id="admin-name" style="font-size:.86rem;color:var(--muted)"></span>
             <button class="btn btn-sm btn-outline" onclick="openSettingsModal()">Settings</button>
@@ -933,7 +933,7 @@ async function createSurvey() {
 // ── Auth ──
 function toggleAuthMode() {
     isRegister = !isRegister;
-    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create account' : 'Survey Studio';
+    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create account' : 'Ponder';
     document.querySelector('.auth-card .sub').textContent = isRegister ? 'Register a new admin account' : 'Sign in to design conversations and analyse responses';
     document.querySelector('#login-form .btn').textContent = isRegister ? 'Register' : 'Sign In';
     document.querySelector('#login-form .btn').setAttribute('onclick', isRegister ? 'doRegister()' : 'doLogin()');

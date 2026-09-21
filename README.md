@@ -1,6 +1,6 @@
-# Survey Chatbot — Railway Deployable
+# Ponder — conversational surveys and reflections for the classroom
 
-An AI-powered survey chatbot with an admin dashboard. Participants join via a **survey code**, chat with a Claude-powered bot that gathers insights, and admins can monitor results in real-time.
+Ponder is an AI-facilitated survey and formative-assessment chatbot for teachers and students. Students join with an **access code**, review the teacher's briefing, then talk with an AI facilitator that elicits their thinking (with illustrations for each question). Teachers design conversations with an AI-assisted wizard, monitor results live, and download reports.
 
 ## Features
 

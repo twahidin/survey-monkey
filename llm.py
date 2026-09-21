@@ -221,7 +221,7 @@ def _openrouter_headers(cfg: LLMConfig) -> dict:
         "Authorization": f"Bearer {cfg.api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": APP_URL,
-        "X-Title": "Survey Chatbot",
+        "X-Title": "Ponder",
     }
 
 
@@ -354,7 +354,7 @@ async def complete_chat(cfg: LLMConfig, system: str, messages: list, tools: Opti
 
 async def list_openrouter_models(api_key: str = "") -> dict:
     """Return chat and image-capable models from OpenRouter for the settings dropdowns."""
-    headers = {"HTTP-Referer": APP_URL, "X-Title": "Survey Chatbot"}
+    headers = {"HTTP-Referer": APP_URL, "X-Title": "Ponder"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     try:

@@ -1,4 +1,4 @@
-"""Database models for the survey chatbot application."""
+"""Database models for Ponder."""
 
 import uuid
 import enum

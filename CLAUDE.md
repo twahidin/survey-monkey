@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered conversational survey / formative-assessment chatbot for teachers and students. Participants join via an access code, read a teacher-supplied briefing (slides, video or document), then chat with an AI facilitator in a two-panel UI (visual panel + chat) that can show AI-generated illustrations, stock images, videos and button options. Teachers design surveys with an AI-assisted wizard, monitor participation, view insights, read transcripts and download reports (HTML/DOCX). The chat model can be Claude (Anthropic SDK) or any model on OpenRouter.
+**Ponder** (name configurable via `APP_NAME`) — AI-powered conversational survey / formative-assessment chatbot for teachers and students. Participants join via an access code, read a teacher-supplied briefing (slides, video or document), then chat with an AI facilitator in a two-panel UI (visual panel + chat) that can show AI-generated illustrations, stock images, videos and button options. Teachers design surveys with an AI-assisted wizard, monitor participation, view insights, read transcripts and download reports (HTML/DOCX). The chat model can be Claude (Anthropic SDK) or any model on OpenRouter.
 
 ## Commands
 

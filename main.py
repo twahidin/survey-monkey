@@ -1,4 +1,4 @@
-"""Main FastAPI application - Survey Chatbot with Admin Dashboard."""
+"""Ponder — conversational surveys and reflections for the classroom. FastAPI application."""
 
 import json
 import logging
@@ -39,7 +39,8 @@ from report import (
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Survey Chatbot", version="2.0.0")
+APP_NAME = os.environ.get("APP_NAME", "Ponder")
+app = FastAPI(title=APP_NAME, version="2.0.0")
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -1565,7 +1566,7 @@ async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin
 
 
 # ══════════════════════════════════════════════════════════════════
-#  PUBLIC - SURVEY CHATBOT
+#  PUBLIC - PARTICIPANT CHAT
 # ══════════════════════════════════════════════════════════════════
 
 def _briefing_payload(survey: Survey) -> dict:
