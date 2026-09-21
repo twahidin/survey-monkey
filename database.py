@@ -75,6 +75,37 @@ def init_db():
             "used_at TIMESTAMPTZ)"
         ))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_invite_codes_code ON invite_codes(code)"))
+        # Briefing / visuals / LLM override columns on surveys
+        for col in [
+            "briefing_type VARCHAR(20)", "briefing_url TEXT", "briefing_text TEXT", "briefing_title VARCHAR(255)",
+            "image_mode VARCHAR(20)", "image_provider VARCHAR(30)", "image_model VARCHAR(120)",
+            "image_base_url TEXT", "encrypted_image_api_key TEXT", "image_style TEXT",
+            "llm_provider VARCHAR(20)", "llm_model VARCHAR(120)", "encrypted_llm_api_key TEXT",
+        ]:
+            conn.execute(text(f"ALTER TABLE surveys ADD COLUMN IF NOT EXISTS {col}"))
+        # Provider defaults on admin users
+        for col in [
+            "llm_provider VARCHAR(20)", "llm_model VARCHAR(120)", "encrypted_openrouter_key TEXT",
+            "image_provider VARCHAR(30)", "image_model VARCHAR(120)", "image_base_url TEXT",
+            "encrypted_image_api_key TEXT",
+        ]:
+            conn.execute(text(f"ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS {col}"))
+        # Media assets (generated images + uploaded briefing files)
+        conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS media_assets ("
+            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+            "survey_id UUID REFERENCES surveys(id) ON DELETE CASCADE, "
+            "participant_id UUID REFERENCES participants(id) ON DELETE CASCADE, "
+            "kind VARCHAR(20) NOT NULL, "
+            "mime_type VARCHAR(100) NOT NULL, "
+            "filename VARCHAR(255), "
+            "prompt TEXT, "
+            "data BYTEA NOT NULL, "
+            "size_bytes INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMPTZ DEFAULT now())"
+        ))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_assets_survey_id ON media_assets(survey_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_assets_participant_id ON media_assets(participant_id)"))
         conn.commit()
 
 

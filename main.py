@@ -9,9 +9,8 @@ import string
 from datetime import datetime, timezone
 from typing import Optional
 
-import anthropic
 import httpx
-from fastapi import FastAPI, Depends, HTTPException, Request, Response
+from fastapi import FastAPI, Depends, HTTPException, Request, Response, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -21,29 +20,39 @@ from sqlalchemy import case, func
 from database import get_db, init_db
 from models import (
     Survey, SurveyStatus, Participant, ParticipantStatus,
-    ChatMessage, AdminUser, AnalysisMessage, SurveyInsight, InviteCode,
+    ChatMessage, AdminUser, AnalysisMessage, SurveyInsight, InviteCode, MediaAsset,
 )
 from auth import (
     authenticate_admin, create_admin_user, create_access_token,
     decode_token, hash_password, update_admin_password,
     encrypt_api_key, decrypt_api_key,
 )
+from llm import (
+    LLMConfig, LLMError, stream_chat, complete_chat, list_openrouter_models,
+    extract_json_object, normalise_config, default_model, PROVIDERS,
+    ANTHROPIC_API_KEY, OPENROUTER_API_KEY, CLAUDE_CHAT_MODEL, CLAUDE_ANALYSIS_MODEL,
+)
+from imagegen import generate_image, IMAGE_PROVIDERS
+from report import (
+    build_survey_report_html, build_survey_report_docx, build_participant_report_html,
+)
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Survey Chatbot", version="1.0.0")
+app = FastAPI(title="Survey Chatbot", version="2.0.0")
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_CHAT_MODEL = os.environ.get("CLAUDE_CHAT_MODEL", "claude-haiku-4-5-20251001")
-CLAUDE_ANALYSIS_MODEL = os.environ.get("CLAUDE_ANALYSIS_MODEL", "claude-sonnet-4-6")
+UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
 
 # Appended to survey system prompt to keep tone conversational and elicit more reflection
 CONVERSATIONAL_PROMPT = (
-    "\n\n[STYLE: Be warm and conversational, not formal. "
-    "Keep your replies relatively short so the participant does most of the talking. "
-    "Often ask brief follow-ups to draw out more thoughts (e.g. 'What made you think that?', 'Can you say a bit more?', 'How did that feel?'). "
+    "\n\n[STYLE: Be warm, encouraging and conversational, like a good teacher facilitating a discussion. "
+    "Keep your replies short so the participant does most of the talking. "
+    "Ask one question at a time. Often ask brief follow-ups to draw out more thinking "
+    "(e.g. 'What made you think that?', 'Can you give an example?', 'How did that feel?'). "
     "Reflect back what they share and invite elaboration. "
     "Your goal is to elicit genuine reflection and richer responses, not to rush through questions.]"
 )
@@ -52,6 +61,8 @@ SURVEY_TYPE_PROMPTS = {
     "general_sensing": "You are conducting a General Sensing survey — a quick pulse check. Ask each question, briefly clarify or follow up once, then move on. Keep it focused and efficient.",
     "categorising": "You are conducting a Categorising survey — classify participants into groups based on responses. Ask questions that help determine which category they belong to. At the end, reveal their category and provide a tailored response.",
     "depth_survey": "You are conducting a Depth Survey — a reflective conversation. Take your time with each topic. Ask probing follow-ups, explore underlying motivations, help participants reflect deeply. Prioritise depth over breadth.",
+    "formative_assessment": "You are running a Formative Assessment conversation for a class. Work through the questions to surface what the student understands and where misconceptions are. Probe reasoning with 'why' and 'how' follow-ups. Never lecture; hint at most once, then move on. Be encouraging and never make the student feel judged.",
+    "reflection": "You are guiding a Reflection conversation after a learning task. Help the student articulate what they did, what they learned, what was hard, and what they would do differently. Use open questions and give them space to think.",
 }
 
 
@@ -134,13 +145,6 @@ def generate_survey_code(length: int = 6) -> str:
     return "".join(secrets.choice(chars) for _ in range(length))
 
 
-def get_claude_client(api_key: str = None):
-    key = api_key or ANTHROPIC_API_KEY
-    if not key:
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured")
-    return anthropic.AsyncAnthropic(api_key=key)
-
-
 def get_visible_admin_ids(db: Session, admin: AdminUser) -> list:
     """Admin sees own + all teachers' surveys; teacher sees only own."""
     if admin.role == "admin":
@@ -151,93 +155,212 @@ def get_visible_admin_ids(db: Session, admin: AdminUser) -> list:
     return [admin.id]
 
 
-def resolve_api_key(db: Session, survey: Survey) -> str:
-    """Resolve the API key for a survey: owner's key → parent admin's key → env var."""
+def _dec(value: Optional[str]) -> str:
+    if not value:
+        return ""
     try:
-        owner = db.query(AdminUser).filter(AdminUser.id == survey.admin_id).first()
-        if owner and owner.encrypted_api_key:
-            try:
-                return decrypt_api_key(owner.encrypted_api_key)
-            except Exception:
-                pass
-        if owner and owner.parent_admin_id:
-            parent = db.query(AdminUser).filter(AdminUser.id == owner.parent_admin_id).first()
-            if parent and parent.encrypted_api_key:
-                try:
-                    return decrypt_api_key(parent.encrypted_api_key)
-                except Exception:
-                    pass
+        return decrypt_api_key(value)
     except Exception:
-        pass
-    return ANTHROPIC_API_KEY
+        return ""
+
+
+def _first(*values):
+    for v in values:
+        if v:
+            return v
+    return ""
+
+
+def resolve_llm_config(db: Session, survey: Optional[Survey] = None, admin: Optional[AdminUser] = None) -> LLMConfig:
+    """Resolve provider/model/keys: survey override → owner → parent admin → environment."""
+    owner = admin
+    if owner is None and survey is not None:
+        owner = db.query(AdminUser).filter(AdminUser.id == survey.admin_id).first()
+    parent = None
+    if owner is not None and owner.parent_admin_id:
+        parent = db.query(AdminUser).filter(AdminUser.id == owner.parent_admin_id).first()
+    chain = [a for a in (owner, parent) if a is not None]
+
+    # --- chat provider ---
+    provider = _first(
+        survey.llm_provider if survey else "",
+        *[a.llm_provider for a in chain],
+        "openrouter" if (not ANTHROPIC_API_KEY and OPENROUTER_API_KEY) else "anthropic",
+    )
+    if provider not in PROVIDERS:
+        provider = "anthropic"
+
+    model = ""
+    if survey and survey.llm_provider == provider and survey.llm_model:
+        model = survey.llm_model
+    for a in chain:
+        if not model and a.llm_provider == provider and a.llm_model:
+            model = a.llm_model
+
+    def key_for(a: AdminUser) -> str:
+        return _dec(a.encrypted_openrouter_key if provider == "openrouter" else a.encrypted_api_key)
+
+    api_key = ""
+    if survey and survey.llm_provider == provider and survey.encrypted_llm_api_key:
+        api_key = _dec(survey.encrypted_llm_api_key)
+    for a in chain:
+        if not api_key:
+            api_key = key_for(a)
+
+    # --- image generation ---
+    image_mode = (survey.image_mode if survey else "") or "stock"
+    image_provider = _first(survey.image_provider if survey else "", *[a.image_provider for a in chain], "pollinations")
+    image_model = ""
+    if survey and survey.image_provider == image_provider and survey.image_model:
+        image_model = survey.image_model
+    for a in chain:
+        if not image_model and a.image_provider == image_provider and a.image_model:
+            image_model = a.image_model
+    image_base_url = _first(survey.image_base_url if survey else "", *[a.image_base_url for a in chain])
+    image_key = ""
+    if survey and survey.image_provider == image_provider and survey.encrypted_image_api_key:
+        image_key = _dec(survey.encrypted_image_api_key)
+    for a in chain:
+        if not image_key and a.image_provider == image_provider:
+            image_key = _dec(a.encrypted_image_api_key)
+    if not image_key and image_provider == "openrouter":
+        # Reuse the OpenRouter chat key if the image key was not set separately
+        for a in chain:
+            if not image_key:
+                image_key = _dec(a.encrypted_openrouter_key)
+        if not image_key and provider == "openrouter":
+            image_key = api_key
+        if not image_key:
+            image_key = OPENROUTER_API_KEY
+    if not image_key and image_provider == "pollinations":
+        image_key = os.environ.get("POLLINATIONS_API_KEY", "")
+    if not image_key and image_provider == "openai":
+        image_key = os.environ.get("OPENAI_API_KEY", "")
+
+    cfg = LLMConfig(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        image_mode=image_mode,
+        image_provider=image_provider,
+        image_model=image_model,
+        image_base_url=image_base_url,
+        image_api_key=image_key,
+        image_style=(survey.image_style if survey else "") or "",
+    )
+    return normalise_config(cfg)
+
+
+def resolve_api_key(db: Session, survey: Survey) -> str:
+    """Kept for compatibility: the Anthropic key for a survey's owner chain."""
+    return resolve_llm_config(db, survey).api_key
 
 
 # ──────────────────────────── Tool-Use ────────────────────────────
 
-UNSPLASH_ACCESS_KEY = os.environ.get("UNSPLASH_ACCESS_KEY", "")
-PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
-
-SURVEY_TOOLS = [
-    {
-        "name": "show_image",
-        "description": "Show a relevant image to help the participant understand or engage with the topic. Use when visual context would enrich the conversation.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query for finding a relevant image"},
-                "caption": {"type": "string", "description": "Optional caption to display with the image"},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "show_buttons",
-        "description": "Present clickable option buttons instead of asking the participant to type. Use for questions with discrete answer choices (2-6 options).",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "question": {"type": "string", "description": "The question being asked"},
-                "options": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "label": {"type": "string"},
-                            "value": {"type": "string"},
-                        },
-                        "required": ["label", "value"],
+SHOW_BUTTONS_TOOL = {
+    "name": "show_buttons",
+    "description": "Present clickable option buttons instead of asking the participant to type. Use for questions with discrete answer choices (2-6 options).",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "description": "The question being asked"},
+            "options": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "label": {"type": "string"},
+                        "value": {"type": "string"},
                     },
-                    "description": "2-6 options to present as buttons",
+                    "required": ["label", "value"],
                 },
-                "allow_multiple": {
-                    "type": "boolean",
-                    "description": "If true, participant can select multiple options",
-                },
+                "description": "2-6 options to present as buttons",
             },
-            "required": ["question", "options"],
-        },
-    },
-    {
-        "name": "show_video",
-        "description": "Show a relevant short video clip. Use sparingly, only when video would significantly aid understanding.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query for finding a relevant video"},
-                "caption": {"type": "string", "description": "Optional caption"},
+            "allow_multiple": {
+                "type": "boolean",
+                "description": "If true, participant can select multiple options",
             },
-            "required": ["query"],
         },
+        "required": ["question", "options"],
     },
-]
+}
 
-TOOL_USE_PROMPT = (
-    "\n\n[TOOLS: You have tools available to enrich the conversation. "
-    "Use show_buttons when asking questions with clear discrete choices (e.g., frequency, ratings, yes/no). "
-    "Use show_image when a visual would help the participant understand or connect with the topic. "
-    "Use show_video sparingly, only when a video clip would significantly help. "
-    "You can combine text with tool calls — write your message text AND call a tool in the same turn.]"
-)
+GENERATE_IMAGE_TOOL = {
+    "name": "show_image",
+    "description": (
+        "Generate and display an illustrative image in the participant's visual panel. "
+        "Use it when you introduce a new question, scenario or concept so the participant has something concrete to look at and react to. "
+        "Describe a single clear scene in visual terms (subject, setting, mood). Do not ask for text or words in the image."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string", "description": "Visual description of the image to generate (one scene, 1-2 sentences)"},
+            "caption": {"type": "string", "description": "Short caption shown under the image"},
+        },
+        "required": ["prompt"],
+    },
+}
+
+STOCK_IMAGE_TOOL = {
+    "name": "show_image",
+    "description": "Show a relevant stock photo to help the participant understand or engage with the topic. Use when visual context would enrich the conversation.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query for finding a relevant image"},
+            "caption": {"type": "string", "description": "Optional caption to display with the image"},
+        },
+        "required": ["query"],
+    },
+}
+
+SHOW_VIDEO_TOOL = {
+    "name": "show_video",
+    "description": "Show a relevant short video clip. Use sparingly, only when video would significantly aid understanding.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query for finding a relevant video"},
+            "caption": {"type": "string", "description": "Optional caption"},
+        },
+        "required": ["query"],
+    },
+}
+
+# Backwards-compatible name used elsewhere
+SURVEY_TOOLS = [STOCK_IMAGE_TOOL, SHOW_BUTTONS_TOOL, SHOW_VIDEO_TOOL]
+
+
+def build_survey_tools(cfg: LLMConfig) -> list:
+    tools = [SHOW_BUTTONS_TOOL]
+    if cfg.image_mode == "generate":
+        tools.append(GENERATE_IMAGE_TOOL)
+    elif cfg.image_mode == "stock" and UNSPLASH_ACCESS_KEY:
+        tools.append(STOCK_IMAGE_TOOL)
+    if PEXELS_API_KEY:
+        tools.append(SHOW_VIDEO_TOOL)
+    return tools
+
+
+def build_tool_prompt(cfg: LLMConfig) -> str:
+    lines = [
+        "\n\n[TOOLS: You have tools to enrich the conversation. "
+        "Use show_buttons when a question has clear discrete choices (frequency, ratings, yes/no, pick-one)."
+    ]
+    if cfg.image_mode == "generate":
+        lines.append(
+            "Use show_image to generate an illustration whenever you introduce a new question, scenario or idea "
+            "(roughly every one or two questions). The image appears in a visual panel next to the chat, "
+            "so refer to it naturally ('Take a look at the picture — ...'). Describe a concrete scene, not abstract concepts."
+        )
+    elif cfg.image_mode == "stock" and UNSPLASH_ACCESS_KEY:
+        lines.append("Use show_image when a photo would help the participant understand or connect with the topic.")
+    if PEXELS_API_KEY:
+        lines.append("Use show_video sparingly, only when a clip would significantly help.")
+    lines.append("You can combine text with tool calls — write your message text AND call a tool in the same turn. Always include written text.]")
+    return " ".join(lines)
 
 
 async def fetch_unsplash_image(query: str) -> dict:
@@ -293,6 +416,63 @@ async def fetch_pexels_video(query: str) -> dict:
     return {}
 
 
+async def _process_tool_call(tool_name: str, tool_input: dict, cfg: LLMConfig, db: Session,
+                             survey_id=None, participant_id=None) -> list:
+    """Process a tool call and return SSE event dicts to send to the frontend."""
+    events = []
+    if tool_name == "show_image":
+        if cfg.image_mode == "generate":
+            prompt = (tool_input.get("prompt") or tool_input.get("query") or "").strip()
+            if not prompt:
+                return events
+            try:
+                data, mime = await generate_image(cfg, prompt)
+            except LLMError as e:
+                logger.warning(f"Image generation failed ({cfg.image_provider}): {e.message}")
+                return events
+            except Exception as e:
+                logger.warning(f"Image generation failed ({cfg.image_provider}): {e}")
+                return events
+            asset = MediaAsset(
+                survey_id=survey_id, participant_id=participant_id, kind="generated",
+                mime_type=mime, prompt=prompt, data=data, size_bytes=len(data),
+            )
+            db.add(asset)
+            db.commit()
+            db.refresh(asset)
+            events.append({
+                "t": "media", "type": "image",
+                "url": f"/api/assets/{asset.id}", "alt": prompt,
+                "caption": tool_input.get("caption", ""), "generated": True,
+            })
+        else:
+            media = await fetch_unsplash_image(tool_input.get("query") or tool_input.get("prompt") or "")
+            if media:
+                events.append({
+                    "t": "media", "type": "image",
+                    "url": media["url"], "alt": media.get("alt", ""),
+                    "caption": tool_input.get("caption", ""),
+                })
+    elif tool_name == "show_video":
+        media = await fetch_pexels_video(tool_input.get("query", ""))
+        if media:
+            events.append({
+                "t": "media", "type": "video",
+                "url": media["url"], "poster": media.get("poster", ""),
+                "caption": tool_input.get("caption", ""),
+            })
+    elif tool_name == "show_buttons":
+        options = tool_input.get("options", [])
+        if isinstance(options, list) and options:
+            events.append({
+                "t": "buttons",
+                "question": tool_input.get("question", ""),
+                "options": [o for o in options if isinstance(o, dict) and o.get("label")],
+                "allow_multiple": bool(tool_input.get("allow_multiple", False)),
+            })
+    return events
+
+
 # ──────────────────────────── Pydantic Schemas ────────────────────────────
 
 class LoginRequest(BaseModel):
@@ -316,6 +496,22 @@ class SurveyCreate(BaseModel):
     survey_type: Optional[str] = None
     questions: Optional[str] = None
     instructions: Optional[str] = None
+    # briefing
+    briefing_type: Optional[str] = None
+    briefing_url: Optional[str] = None
+    briefing_text: Optional[str] = None
+    briefing_title: Optional[str] = None
+    # visuals
+    image_mode: Optional[str] = None
+    image_provider: Optional[str] = None
+    image_model: Optional[str] = None
+    image_base_url: Optional[str] = None
+    image_api_key: Optional[str] = None
+    image_style: Optional[str] = None
+    # llm override
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_api_key: Optional[str] = None
 
 class SurveyUpdate(BaseModel):
     title: Optional[str] = None
@@ -329,6 +525,19 @@ class SurveyUpdate(BaseModel):
     survey_type: Optional[str] = None
     questions: Optional[str] = None
     instructions: Optional[str] = None
+    briefing_type: Optional[str] = None
+    briefing_url: Optional[str] = None
+    briefing_text: Optional[str] = None
+    briefing_title: Optional[str] = None
+    image_mode: Optional[str] = None
+    image_provider: Optional[str] = None
+    image_model: Optional[str] = None
+    image_base_url: Optional[str] = None
+    image_api_key: Optional[str] = None
+    image_style: Optional[str] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_api_key: Optional[str] = None
 
 class JoinSurveyRequest(BaseModel):
     survey_code: str
@@ -353,24 +562,109 @@ class TeacherRegister(BaseModel):
     invite_code: str
 
 class UpdateSettings(BaseModel):
+    api_key: Optional[str] = None           # Anthropic key ("" clears)
+    openrouter_key: Optional[str] = None    # OpenRouter key ("" clears)
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    image_provider: Optional[str] = None
+    image_model: Optional[str] = None
+    image_base_url: Optional[str] = None
+    image_api_key: Optional[str] = None     # "" clears
+
+class WizardRequest(BaseModel):
+    goal: str
+    audience: Optional[str] = None
+    survey_type: Optional[str] = None
+    num_questions: Optional[int] = 5
+    tone: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    extra: Optional[str] = None
+    current: Optional[dict] = None
+    feedback: Optional[str] = None
+
+class TestImageRequest(BaseModel):
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    base_url: Optional[str] = None
     api_key: Optional[str] = None
+    style: Optional[str] = None
+    prompt: Optional[str] = None
+
+
+SURVEY_BRIEFING_TYPES = {"none", "slides", "video", "document", "image", "link"}
+IMAGE_MODES = {"none", "stock", "generate"}
+
+
+def _survey_public_dict(s: Survey) -> dict:
+    """Fields every admin-facing survey payload should expose."""
+    return {
+        "briefing_type": s.briefing_type or "none",
+        "briefing_url": s.briefing_url or "",
+        "briefing_text": s.briefing_text or "",
+        "briefing_title": s.briefing_title or "",
+        "image_mode": s.image_mode or "stock",
+        "image_provider": s.image_provider or "",
+        "image_model": s.image_model or "",
+        "image_base_url": s.image_base_url or "",
+        "has_image_api_key": bool(s.encrypted_image_api_key),
+        "image_style": s.image_style or "",
+        "llm_provider": s.llm_provider or "",
+        "llm_model": s.llm_model or "",
+        "has_llm_api_key": bool(s.encrypted_llm_api_key),
+    }
+
+
+def _apply_survey_fields(survey: Survey, data: dict):
+    """Apply create/update payload fields with validation and key encryption."""
+    for field, value in data.items():
+        if field in ("image_api_key", "llm_api_key"):
+            continue
+        if field == "briefing_type" and value is not None and value not in SURVEY_BRIEFING_TYPES:
+            raise HTTPException(status_code=400, detail="Invalid briefing type")
+        if field == "image_mode" and value is not None and value not in IMAGE_MODES:
+            raise HTTPException(status_code=400, detail="Invalid image mode")
+        if field == "image_provider" and value and value not in IMAGE_PROVIDERS:
+            raise HTTPException(status_code=400, detail="Invalid image provider")
+        if field == "llm_provider" and value and value not in PROVIDERS:
+            raise HTTPException(status_code=400, detail="Invalid LLM provider")
+        if field == "max_messages" and value is not None:
+            value = max(1, min(int(value), 200))
+        setattr(survey, field, value)
+    if "image_api_key" in data:
+        v = data["image_api_key"]
+        if v is None:
+            pass
+        elif v.strip():
+            survey.encrypted_image_api_key = encrypt_api_key(v.strip())
+        else:
+            survey.encrypted_image_api_key = None
+    if "llm_api_key" in data:
+        v = data["llm_api_key"]
+        if v is None:
+            pass
+        elif v.strip():
+            survey.encrypted_llm_api_key = encrypt_api_key(v.strip())
+        else:
+            survey.encrypted_llm_api_key = None
 
 
 # ══════════════════════════════════════════════════════════════════
 #  PAGE ROUTES
 # ══════════════════════════════════════════════════════════════════
 
+NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
 @app.get("/", response_class=HTMLResponse)
 def serve_survey_page():
-    return FileResponse("templates/survey.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    return FileResponse("templates/survey.html", headers=NO_CACHE)
 
 @app.get("/admin", response_class=HTMLResponse)
 def serve_admin_page():
-    return FileResponse("templates/admin.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    return FileResponse("templates/admin.html", headers=NO_CACHE)
 
 @app.get("/register", response_class=HTMLResponse)
 def serve_register_page():
-    return FileResponse("templates/register.html", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    return FileResponse("templates/register.html", headers=NO_CACHE)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -396,7 +690,6 @@ def _validate_credentials(username: str, password: str):
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     if not any(c.isalpha() for c in password) or not any(c.isdigit() for c in password):
         raise HTTPException(status_code=400, detail="Password must contain both letters and numbers")
-
 
 @app.post("/api/auth/register")
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
@@ -424,7 +717,6 @@ def list_surveys(
     admin: AdminUser = Depends(get_current_admin),
 ):
     admin_ids = get_visible_admin_ids(db, admin)
-    # Use subquery counts instead of loading all participants
     surveys = (
         db.query(
             Survey,
@@ -438,7 +730,6 @@ def list_surveys(
         .order_by(Survey.created_at.desc())
         .all()
     )
-    # Build a map of admin_id → username for "created_by" labels
     admin_map = {}
     if admin.role == "admin":
         for a in db.query(AdminUser).filter(AdminUser.id.in_(admin_ids)).all():
@@ -464,6 +755,7 @@ def list_surveys(
             "completed_participants": completed,
             "total_participants": total,
             "created_by": admin_map.get(str(s.admin_id), ""),
+            **_survey_public_dict(s),
         }
         for s, total, active, completed in surveys
     ]
@@ -476,10 +768,9 @@ def create_survey(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
-    code = req.survey_code or generate_survey_code()
+    code = (req.survey_code or generate_survey_code()).strip().upper()
     if db.query(Survey).filter(Survey.survey_code == code).first():
         raise HTTPException(status_code=400, detail="Survey code already in use")
-    # Compose system_prompt from wizard fields or use raw prompt
     if req.survey_type and req.questions:
         system_prompt = compose_system_prompt(req.survey_type, req.questions, req.instructions or "")
     elif req.system_prompt:
@@ -487,21 +778,17 @@ def create_survey(
     else:
         raise HTTPException(status_code=400, detail="Either survey type + questions or a system prompt is required")
     survey = Survey(
-        title=req.title,
-        topic=req.topic,
+        title=req.title.strip(),
+        topic=req.topic.strip(),
         system_prompt=system_prompt,
-        facilitator_intro=req.facilitator_intro or None,
-        survey_code=code.upper(),
-        max_messages=req.max_messages,
+        survey_code=code,
         admin_id=admin.id,
         status=SurveyStatus.ACTIVE,
-        collect_name=req.collect_name,
-        collect_email=req.collect_email,
-        collect_phone=req.collect_phone,
-        survey_type=req.survey_type,
-        questions=req.questions,
-        instructions=req.instructions,
     )
+    data = req.dict(exclude_unset=True)
+    for k in ("title", "topic", "system_prompt", "survey_code"):
+        data.pop(k, None)
+    _apply_survey_fields(survey, data)
     db.add(survey)
     db.commit()
     db.refresh(survey)
@@ -520,14 +807,10 @@ def update_survey(
     survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
-    for field, value in req.dict(exclude_unset=True).items():
-        setattr(survey, field, value)
-    # Recompose system_prompt if wizard fields are present
-    effective_type = survey.survey_type
-    effective_questions = survey.questions
-    effective_instructions = survey.instructions
-    if effective_type and effective_questions:
-        survey.system_prompt = compose_system_prompt(effective_type, effective_questions, effective_instructions or "")
+    data = req.dict(exclude_unset=True)
+    _apply_survey_fields(survey, data)
+    if survey.survey_type and survey.questions:
+        survey.system_prompt = compose_system_prompt(survey.survey_type, survey.questions, survey.instructions or "")
     db.commit()
     return {"ok": True}
 
@@ -545,7 +828,6 @@ def close_survey(
         raise HTTPException(status_code=404, detail="Survey not found")
     survey.status = SurveyStatus.CLOSED
     survey.closed_at = datetime.now(timezone.utc)
-    # Mark all active participants as abandoned
     for p in survey.participants:
         if p.status == ParticipantStatus.ACTIVE:
             p.status = ParticipantStatus.ABANDONED
@@ -585,6 +867,7 @@ def delete_survey(
         raise HTTPException(status_code=404, detail="Survey not found")
     db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey_id).delete()
     db.query(AnalysisMessage).filter(AnalysisMessage.survey_id == survey_id).delete()
+    db.query(MediaAsset).filter(MediaAsset.survey_id == survey_id).delete()
     db.delete(survey)
     db.commit()
     return {"ok": True}
@@ -608,7 +891,8 @@ def delete_participant(
     ).first()
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
-    db.delete(participant)  # cascade deletes chat_messages
+    db.query(MediaAsset).filter(MediaAsset.participant_id == participant.id).delete()
+    db.delete(participant)
     db.commit()
     return {"ok": True}
 
@@ -636,6 +920,7 @@ def bulk_delete_participants(
             Participant.id == pid, Participant.survey_id == survey_id
         ).first()
         if p:
+            db.query(MediaAsset).filter(MediaAsset.participant_id == p.id).delete()
             db.delete(p)
             deleted += 1
     db.commit()
@@ -643,56 +928,97 @@ def bulk_delete_participants(
 
 
 # ══════════════════════════════════════════════════════════════════
-#  ADMIN - ANALYTICS
+#  ADMIN - BRIEFING UPLOADS & MEDIA ASSETS
 # ══════════════════════════════════════════════════════════════════
 
-@app.get("/api/surveys/{survey_id}/results")
-def get_survey_results(
+ALLOWED_UPLOADS = {
+    "application/pdf": "document",
+    "image/png": "image", "image/jpeg": "image", "image/webp": "image", "image/gif": "image",
+    "video/mp4": "video", "video/webm": "video",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "slides",
+    "application/vnd.ms-powerpoint": "slides",
+}
+
+
+@app.post("/api/surveys/{survey_id}/briefing/upload")
+async def upload_briefing(
     survey_id: str,
-    request: Request,
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(get_current_admin),
 ):
     admin_ids = get_visible_admin_ids(db, admin)
-    survey = (
-        db.query(Survey)
-        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
-        .first()
-    )
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
+    mime = (file.content_type or "").split(";")[0].strip().lower()
+    kind = ALLOWED_UPLOADS.get(mime)
+    if not kind:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Upload a PDF, PowerPoint, image, or MP4/WebM video.")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)")
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    # Replace any previous briefing upload for this survey
+    db.query(MediaAsset).filter(MediaAsset.survey_id == survey.id, MediaAsset.kind == "briefing").delete()
+    asset = MediaAsset(
+        survey_id=survey.id, kind="briefing", mime_type=mime, filename=file.filename,
+        data=data, size_bytes=len(data),
+    )
+    db.add(asset)
+    db.flush()
+    survey.briefing_type = kind
+    survey.briefing_url = f"/api/assets/{asset.id}"
+    db.commit()
+    return {"url": survey.briefing_url, "briefing_type": kind, "filename": file.filename, "size_bytes": len(data)}
 
-    # Efficient count queries instead of loading all participants
+
+@app.get("/api/assets/{asset_id}")
+def get_asset(asset_id: str, db: Session = Depends(get_db)):
+    try:
+        aid = uuid.UUID(asset_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    asset = db.query(MediaAsset).filter(MediaAsset.id == aid).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Not found")
+    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+    if asset.filename:
+        safe = asset.filename.replace('"', "")
+        headers["Content-Disposition"] = f'inline; filename="{safe}"'
+    return Response(content=asset.data, media_type=asset.mime_type, headers=headers)
+
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN - ANALYTICS
+# ══════════════════════════════════════════════════════════════════
+
+def _load_results(db: Session, survey: Survey) -> dict:
     counts = db.query(
         func.count(Participant.id).label("total"),
         func.count(case((Participant.status == ParticipantStatus.ACTIVE, 1))).label("active"),
         func.count(case((Participant.status == ParticipantStatus.COMPLETED, 1))).label("completed"),
         func.avg(Participant.duration_seconds).label("avg_duration"),
-    ).filter(Participant.survey_id == survey_id).first()
+    ).filter(Participant.survey_id == survey.id).first()
 
-    # Load participants with message counts (no message content yet)
     participants = (
-        db.query(
-            Participant,
-            func.count(ChatMessage.id).label("msg_count"),
-        )
+        db.query(Participant, func.count(ChatMessage.id).label("msg_count"))
         .outerjoin(ChatMessage, ChatMessage.participant_id == Participant.id)
-        .filter(Participant.survey_id == survey_id)
+        .filter(Participant.survey_id == survey.id)
         .group_by(Participant.id)
         .order_by(Participant.started_at)
         .all()
     )
-
     participants_data = []
     for p, msg_count in participants:
-        # Load messages per participant (avoids one massive join)
         msgs = (
             db.query(ChatMessage)
             .filter(ChatMessage.participant_id == p.id)
             .order_by(ChatMessage.created_at)
             .all()
         )
-        p_data = {
+        participants_data.append({
             "id": str(p.id),
             "status": p.status.value,
             "started_at": p.started_at.isoformat(),
@@ -706,9 +1032,28 @@ def get_survey_results(
                 {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
                 for m in msgs
             ],
-        }
-        participants_data.append(p_data)
+        })
+    stats = {
+        "total_participants": counts.total or 0,
+        "active_participants": counts.active or 0,
+        "completed_participants": counts.completed or 0,
+        "avg_completion_seconds": round(counts.avg_duration or 0, 1),
+    }
+    return {"stats": stats, "participants": participants_data}
 
+
+@app.get("/api/surveys/{survey_id}/results")
+def get_survey_results(
+    survey_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    results = _load_results(db, survey)
     return {
         "survey": {
             "id": str(survey.id),
@@ -725,14 +1070,10 @@ def get_survey_results(
             "collect_name": survey.collect_name,
             "collect_email": survey.collect_email,
             "collect_phone": survey.collect_phone,
+            **_survey_public_dict(survey),
         },
-        "stats": {
-            "total_participants": counts.total or 0,
-            "active_participants": counts.active or 0,
-            "completed_participants": counts.completed or 0,
-            "avg_completion_seconds": round(counts.avg_duration or 0, 1),
-        },
-        "participants": participants_data,
+        "stats": results["stats"],
+        "participants": results["participants"],
     }
 
 
@@ -785,9 +1126,71 @@ def download_conversations(
     )
 
 
+def _asset_loader(db: Session):
+    def load(asset_id: str):
+        try:
+            return db.query(MediaAsset).filter(MediaAsset.id == uuid.UUID(asset_id)).first()
+        except ValueError:
+            return None
+    return load
+
+
+@app.get("/api/surveys/{survey_id}/report")
+async def download_report(
+    survey_id: str,
+    request: Request,
+    format: str = "html",
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    """Full survey report: summary, AI insights, and every transcript with images."""
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = (
+        db.query(Survey)
+        .filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids))
+        .options(joinedload(Survey.participants).joinedload(Participant.messages))
+        .first()
+    )
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    results = _load_results(db, survey)
+    cached = db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey_id).first()
+    insights = None
+    if cached:
+        try:
+            insights = json.loads(cached.insights_json)
+        except Exception:
+            insights = None
+    elif results["participants"]:
+        try:
+            insights = await _generate_insights(survey, db)
+        except Exception as e:
+            logger.warning(f"Report insights generation failed: {e}")
+    safe_title = "".join(c if c.isalnum() or c in "-_ " else "_" for c in survey.title).strip() or "survey"
+    if format == "docx":
+        data = build_survey_report_docx(survey, results["participants"], results["stats"], insights,
+                                        asset_loader=_asset_loader(db), fetch_external=True)
+        return Response(
+            content=data,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{safe_title}_report.docx"'},
+        )
+    html = build_survey_report_html(survey, results["participants"], results["stats"], insights,
+                                    asset_loader=_asset_loader(db), fetch_external=False)
+    return HTMLResponse(html, headers=NO_CACHE)
+
+
 # ══════════════════════════════════════════════════════════════════
 #  ADMIN - ANALYSIS CHATBOT (insights from survey data)
 # ══════════════════════════════════════════════════════════════════
+
+ANALYST_SYSTEM = (
+    "You are a survey data analyst for a school-sanctioned research platform. "
+    "The data below contains anonymized survey responses collected with informed consent "
+    "as part of an approved school initiative. Participant IDs are random hashes. "
+    "Analyze the response patterns objectively. "
+)
+
 
 @app.post("/api/surveys/{survey_id}/analyze")
 async def analyze_survey(
@@ -807,7 +1210,6 @@ async def analyze_survey(
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
-    # Build survey data summary for context (filter out tool events, cap total size)
     all_conversations = []
     for p in survey.participants:
         if p.messages:
@@ -831,7 +1233,6 @@ async def analyze_survey(
         "\n\n".join(all_conversations) if all_conversations else "No conversations yet."
     )
 
-    # Load prior analysis messages
     prior = (
         db.query(AnalysisMessage)
         .filter(AnalysisMessage.survey_id == survey_id, AnalysisMessage.admin_id == admin.id)
@@ -840,7 +1241,6 @@ async def analyze_survey(
     )
     history = [{"role": m.role, "content": m.content} for m in prior if m.content and m.content.strip()]
     history.append({"role": "user", "content": req.message})
-    # Ensure alternating roles (Claude requires this) — merge consecutive same-role messages
     deduped = []
     for msg in history:
         if deduped and deduped[-1]["role"] == msg["role"]:
@@ -849,20 +1249,12 @@ async def analyze_survey(
             deduped.append(msg)
     history = deduped
 
-    # Save user message
-    db.add(AnalysisMessage(
-        survey_id=survey_id, admin_id=admin.id, role="user", content=req.message
-    ))
+    db.add(AnalysisMessage(survey_id=survey_id, admin_id=admin.id, role="user", content=req.message))
     db.commit()
 
-    # Stream Claude response via SSE
-    api_key = resolve_api_key(db, survey)
-    client = get_claude_client(api_key)
+    cfg = resolve_llm_config(db, survey)
     system_prompt = (
-        "You are a survey data analyst for a school-sanctioned research platform. "
-        "The data below contains anonymized adult survey responses collected with informed consent "
-        "as part of an approved school research initiative. Participant IDs are random hashes. "
-        "Analyze the response patterns objectively. "
+        ANALYST_SYSTEM +
         "Provide insightful analysis, identify themes, summarize sentiment, and answer questions "
         "about the survey results. Be specific and cite participant responses when relevant.\n\n"
         "CHARTS: When presenting quantitative data, include interactive charts using fenced code blocks "
@@ -878,40 +1270,37 @@ async def analyze_survey(
         f"{survey_context}"
     )
 
-    logger.info(f"Analysis request: survey={survey_id}, history_len={len(history)}, context_chars={len(survey_context)}")
+    logger.info(f"Analysis request: survey={survey_id}, provider={cfg.describe()}, history_len={len(history)}, context_chars={len(survey_context)}")
 
     async def analysis_stream():
         full_text = []
         yield f"data: {json.dumps({'t': 'status', 'v': 'Analyzing survey data...'})}\n\n"
-        # Try analysis model first, fall back to chat model if it refuses
-        for model in [CLAUDE_ANALYSIS_MODEL, CLAUDE_CHAT_MODEL]:
+        # Try the analysis model first, then the chat model as a fallback
+        for analysis in (True, False):
             full_text = []
             try:
-                async with client.messages.stream(
-                    model=model,
-                    max_tokens=4096,
-                    system=system_prompt,
-                    messages=history,
-                ) as stream:
-                    async for text in stream.text_stream:
-                        full_text.append(text)
-                        yield f"data: {json.dumps({'t': 'chunk', 'v': text})}\n\n"
+                async for ev in stream_chat(cfg, system_prompt, history, tools=None, max_tokens=4096, analysis=analysis):
+                    if ev["type"] == "text":
+                        full_text.append(ev["text"])
+                        yield f"data: {json.dumps({'t': 'chunk', 'v': ev['text']})}\n\n"
                 if full_text:
-                    logger.info(f"Analysis stream succeeded with model {model}")
                     break
-                logger.warning(f"Model {model} returned empty response for analysis, trying fallback")
+                logger.warning("Analysis model returned an empty response, trying fallback")
+            except LLMError as e:
+                logger.error(f"Analysis stream error ({cfg.describe()}, analysis={analysis}): {e.message}")
+                if not analysis:
+                    yield f"data: {json.dumps({'t': 'error', 'v': e.message})}\n\n"
+                    return
             except Exception as e:
-                logger.error(f"Analysis stream error ({model}): {e}", exc_info=True)
-                if model == CLAUDE_CHAT_MODEL:
+                logger.error(f"Analysis stream error: {e}", exc_info=True)
+                if not analysis:
                     yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
                     return
 
         assistant_text = "".join(full_text)
         if assistant_text.strip():
             try:
-                db.add(AnalysisMessage(
-                    survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text
-                ))
+                db.add(AnalysisMessage(survey_id=survey_id, admin_id=admin.id, role="assistant", content=assistant_text))
                 db.commit()
             except Exception as e:
                 logger.error(f"Failed to save analysis message: {e}")
@@ -1002,6 +1391,9 @@ def _build_insights_prompt(survey, participants_data: list) -> str:
     )
 
 
+EMPTY_INSIGHTS = {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": []}
+
+
 async def _generate_insights(survey, db: Session) -> dict:
     participants_data = []
     for p in sorted(survey.participants, key=lambda x: x.started_at):
@@ -1017,55 +1409,34 @@ async def _generate_insights(survey, db: Session) -> dict:
         })
 
     if not participants_data:
-        return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": []}
+        return dict(EMPTY_INSIGHTS)
 
     prompt = _build_insights_prompt(survey, participants_data)
-    logger.info(f"Generating insights for survey {survey.id}: {len(participants_data)} participants, prompt length {len(prompt)} chars")
-    api_key = resolve_api_key(db, survey)
-    client = get_claude_client(api_key)
-    insights_system = (
-        "You are a survey data analyst for a school-sanctioned research platform. "
-        "The data below contains anonymized adult survey responses collected with informed consent "
-        "as part of an approved school research initiative. Participant IDs are random hashes. "
-        "Analyze the response patterns objectively. "
-        "Return ONLY valid JSON, no markdown fences, no explanation."
-    )
+    cfg = resolve_llm_config(db, survey)
+    logger.info(f"Generating insights for survey {survey.id}: {len(participants_data)} participants, provider={cfg.describe()}, prompt length {len(prompt)} chars")
+    insights_system = ANALYST_SYSTEM + "Return ONLY valid JSON, no markdown fences, no explanation."
 
-    # Try analysis model first, fall back to chat model if refused
     raw = ""
-    for model in [CLAUDE_ANALYSIS_MODEL, CLAUDE_CHAT_MODEL]:
+    for analysis in (True, False):
         try:
-            response = await client.messages.create(
-                model=model,
-                max_tokens=4096,
-                system=insights_system,
-                messages=[{"role": "user", "content": prompt}],
-            )
-        except Exception as e:
-            logger.error(f"Claude API error ({model}) generating insights: {e}", exc_info=True)
+            result = await complete_chat(cfg, insights_system, [{"role": "user", "content": prompt}],
+                                         max_tokens=4096, analysis=analysis)
+        except LLMError as e:
+            logger.error(f"Insights generation error ({cfg.describe()}, analysis={analysis}): {e.message}")
             continue
-        for block in response.content:
-            if hasattr(block, "text"):
-                raw = block.text.strip()
-                break
+        except Exception as e:
+            logger.error(f"Insights generation error: {e}", exc_info=True)
+            continue
+        raw = (result.get("text") or "").strip()
         if raw:
-            logger.info(f"Insights generated successfully with model {model}")
             break
-        logger.warning(f"No text from {model} for insights. Stop reason: {response.stop_reason}")
+        logger.warning("Empty insights response, trying fallback model")
 
     if not raw:
-        return {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": [], "error": "AI refused to analyze — try regenerating or adjusting the survey topic"}
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-    if raw.endswith("```"):
-        raw = raw[:-3].strip()
-    if raw.startswith("json"):
-        raw = raw[4:].strip()
-
-    try:
-        insights = json.loads(raw)
-    except json.JSONDecodeError:
-        insights = {"sentiment": {"positive": 0, "neutral": 0, "negative": 0}, "themes": [], "participants": [], "error": "Failed to parse insights"}
+        return {**EMPTY_INSIGHTS, "error": "AI could not analyze the conversations — check the provider settings or try regenerating"}
+    insights = extract_json_object(raw)
+    if not isinstance(insights, dict):
+        insights = {**EMPTY_INSIGHTS, "error": "Failed to parse insights"}
 
     existing = db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey.id).first()
     now = datetime.now(timezone.utc)
@@ -1073,11 +1444,7 @@ async def _generate_insights(survey, db: Session) -> dict:
         existing.insights_json = json.dumps(insights)
         existing.generated_at = now
     else:
-        db.add(SurveyInsight(
-            survey_id=survey.id,
-            insights_json=json.dumps(insights),
-            generated_at=now,
-        ))
+        db.add(SurveyInsight(survey_id=survey.id, insights_json=json.dumps(insights), generated_at=now))
     db.commit()
     return insights
 
@@ -1130,175 +1497,198 @@ async def regenerate_survey_insights(
 
 
 # ══════════════════════════════════════════════════════════════════
+#  ADMIN - PROMPT WIZARD
+# ══════════════════════════════════════════════════════════════════
+
+WIZARD_SYSTEM = (
+    "You are an expert instructional designer who writes prompts for AI facilitators that run "
+    "conversational surveys, reflections and formative assessments with students. "
+    "Given a teacher's rough description, produce a complete, professional configuration.\n\n"
+    "Return ONLY a JSON object with these keys (all strings unless noted):\n"
+    '  "title": short survey title (max 8 words)\n'
+    '  "topic": one-sentence description of what the survey is about\n'
+    '  "survey_type": one of general_sensing | categorising | depth_survey | formative_assessment | reflection\n'
+    '  "questions": the questions the facilitator must cover, numbered one per line, ordered from easy to demanding. '
+    'Each question should be open, concrete and answerable by the target audience. Include a short note in brackets on what a strong answer contains where helpful.\n'
+    '  "instructions": how the facilitator should behave — pacing, follow-up strategy, what to do with weak/strong answers, '
+    'how to close, what NOT to do (e.g. never give away answers). 4-8 sentences.\n'
+    '  "facilitator_intro": a friendly 1-2 sentence introduction the bot says at the start, in first person, naming the task\n'
+    '  "briefing_text": 3-6 sentences the student reads before starting, explaining the task, why it matters and what to expect\n'
+    '  "image_style": a short visual style description for generated illustrations suited to the audience (e.g. "clean flat vector illustration, bright colours, no text")\n'
+    '  "max_messages": integer, suggested number of participant replies for the whole conversation\n'
+    "Write in clear, natural English appropriate for the audience's age. Never include markdown fences."
+)
+
+
+@app.post("/api/surveys/wizard")
+async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """AI assistant that drafts (or refines) the survey configuration from a teacher's brief."""
+    goal = (req.goal or "").strip()
+    if not goal and not (req.current and req.feedback):
+        raise HTTPException(status_code=400, detail="Describe what you want the chatbot to find out")
+    brief = [f"Teacher's goal: {goal}"]
+    if req.audience:
+        brief.append(f"Audience: {req.audience}")
+    if req.survey_type:
+        brief.append(f"Preferred survey type: {req.survey_type}")
+    if req.num_questions:
+        brief.append(f"Number of questions: about {req.num_questions}")
+    if req.duration_minutes:
+        brief.append(f"Target duration: about {req.duration_minutes} minutes")
+    if req.tone:
+        brief.append(f"Tone: {req.tone}")
+    if req.extra:
+        brief.append(f"Other notes: {req.extra}")
+    if req.current:
+        brief.append("\nCURRENT DRAFT (JSON):\n" + json.dumps(req.current, ensure_ascii=False, indent=1))
+    if req.feedback:
+        brief.append(f"\nTEACHER'S FEEDBACK — revise the draft accordingly, keeping what works:\n{req.feedback}")
+    cfg = resolve_llm_config(db, admin=admin)
+    try:
+        result = await complete_chat(cfg, WIZARD_SYSTEM, [{"role": "user", "content": "\n".join(brief)}],
+                                     max_tokens=3000, analysis=True)
+    except LLMError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    data = extract_json_object(result.get("text") or "")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="The AI did not return a usable draft. Please try again.")
+    if data.get("survey_type") not in SURVEY_TYPE_PROMPTS:
+        data["survey_type"] = req.survey_type or "depth_survey"
+    try:
+        data["max_messages"] = max(3, min(int(data.get("max_messages") or 20), 100))
+    except (TypeError, ValueError):
+        data["max_messages"] = 20
+    for k in ("title", "topic", "questions", "instructions", "facilitator_intro", "briefing_text", "image_style"):
+        v = data.get(k)
+        data[k] = (v if isinstance(v, str) else json.dumps(v, ensure_ascii=False) if v else "").strip()
+    return {"draft": data, "provider": cfg.describe()}
+
+
+# ══════════════════════════════════════════════════════════════════
 #  PUBLIC - SURVEY CHATBOT
 # ══════════════════════════════════════════════════════════════════
 
+def _briefing_payload(survey: Survey) -> dict:
+    return {
+        "type": survey.briefing_type or "none",
+        "url": survey.briefing_url or "",
+        "text": survey.briefing_text or "",
+        "title": survey.briefing_title or "",
+    }
+
+
+def _build_chat_system(survey: Survey, cfg: LLMConfig) -> str:
+    system = survey.system_prompt
+    if survey.briefing_text and survey.briefing_text.strip():
+        system += (
+            "\n\n[TASK BRIEFING — the participant has just read/watched this before the chat began. "
+            "Refer to it where relevant and do not repeat it in full:\n"
+            + survey.briefing_text.strip() + "\n]"
+        )
+    return system + CONVERSATIONAL_PROMPT + build_tool_prompt(cfg)
+
+
 @app.post("/api/survey/join")
 async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
-    survey = db.query(Survey).filter(Survey.survey_code == req.survey_code.upper()).first()
+    survey = db.query(Survey).filter(Survey.survey_code == req.survey_code.strip().upper()).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Invalid survey code")
     if survey.status != SurveyStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="This survey is not currently active")
 
     session_token = secrets.token_urlsafe(32)
-    participant = Participant(
-        survey_id=survey.id,
-        session_token=session_token,
-        status=ParticipantStatus.ACTIVE,
-    )
+    participant = Participant(survey_id=survey.id, session_token=session_token, status=ParticipantStatus.ACTIVE)
     db.add(participant)
     db.commit()
+    db.refresh(participant)
 
-    # Build system prompt: include facilitator intro so the bot uses it when greeting
-    system = survey.system_prompt
+    cfg = resolve_llm_config(db, survey)
+    system = _build_chat_system(survey, cfg)
     if survey.facilitator_intro and survey.facilitator_intro.strip():
         system += (
             "\n\n[When you first greet the participant, use this introduction (say it naturally):\n"
             + survey.facilitator_intro.strip()
             + "\n]"
         )
-    system += CONVERSATIONAL_PROMPT + TOOL_USE_PROMPT
-    # Generate the opening message from Claude (with tool-use support)
-    api_key = resolve_api_key(db, survey)
-    client = get_claude_client(api_key)
+    tools = build_survey_tools(cfg)
     try:
-        response = await client.messages.create(
-            model=CLAUDE_CHAT_MODEL,
-            max_tokens=1024,
-            system=system,
-            messages=[{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin. Always include a written greeting — do not rely solely on tools.)"}],
-            tools=SURVEY_TOOLS,
+        result = await complete_chat(
+            cfg, system,
+            [{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin with the first question. Always include a written greeting — do not rely solely on tools.)"}],
+            tools=tools, max_tokens=1024,
         )
-    except anthropic.AuthenticationError:
-        raise HTTPException(status_code=500, detail="AI service authentication failed. Please check the API key configuration.")
-    except anthropic.APIError as e:
-        raise HTTPException(status_code=500, detail=f"AI service error: {e.message}")
+    except LLMError as e:
+        db.delete(participant)
+        db.commit()
+        raise HTTPException(status_code=e.status, detail=e.message)
 
-    # Process content blocks — extract text and tool events
-    text_parts = []
     tool_events = []
-    for block in response.content:
-        if block.type == "text":
-            text_parts.append(block.text)
-        elif block.type == "tool_use":
-            events = await _process_tool_call(block.name, block.input)
-            tool_events.extend(events)
+    for call in result.get("tool_calls", []):
+        tool_events.extend(await _process_tool_call(call["name"], call["input"], cfg, db, survey.id, participant.id))
 
-    opening = "".join(text_parts)
+    opening = result.get("text") or ""
     if not opening and tool_events:
         opening = "(presented interactive content)"
+    if not opening:
+        opening = "Hello, and welcome! Let's get started — whenever you're ready, tell me a little about yourself."
 
-    # Save the synthetic user prompt and opening message so history is anchored
     db.add(ChatMessage(participant_id=participant.id, role="user", content="(The participant has just joined the survey.)"))
     db.add(ChatMessage(participant_id=participant.id, role="assistant", content=opening))
     if tool_events:
-        db.add(ChatMessage(
-            participant_id=participant.id, role="assistant",
-            content=f"[TOOL_EVENTS]{json.dumps(tool_events)}",
-        ))
+        db.add(ChatMessage(participant_id=participant.id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
     db.commit()
 
     return {
         "session_token": session_token,
         "survey_title": survey.title,
+        "survey_topic": survey.topic,
         "opening_message": opening,
         "opening_events": tool_events,
+        "max_messages": survey.max_messages,
         "collect_name": survey.collect_name,
         "collect_email": survey.collect_email,
         "collect_phone": survey.collect_phone,
+        "image_mode": cfg.image_mode,
+        "briefing": _briefing_payload(survey),
     }
 
 
-async def _process_tool_call(tool_name: str, tool_input: dict) -> list:
-    """Process a tool call and return SSE event dicts to send to the frontend."""
-    events = []
-    if tool_name == "show_image":
-        media = await fetch_unsplash_image(tool_input["query"])
-        if media:
-            events.append({
-                "t": "media", "type": "image",
-                "url": media["url"], "alt": media.get("alt", ""),
-                "caption": tool_input.get("caption", ""),
-            })
-    elif tool_name == "show_video":
-        media = await fetch_pexels_video(tool_input["query"])
-        if media:
-            events.append({
-                "t": "media", "type": "video",
-                "url": media["url"], "poster": media.get("poster", ""),
-                "caption": tool_input.get("caption", ""),
-            })
-    elif tool_name == "show_buttons":
-        events.append({
-            "t": "buttons",
-            "question": tool_input.get("question", ""),
-            "options": tool_input.get("options", []),
-            "allow_multiple": tool_input.get("allow_multiple", False),
-        })
-    return events
-
-
-async def _chat_stream_generator_v2(
-    client, system: str, history: list, participant, db, near_limit: bool
-):
-    """Stream text + tool results as SSE events using true token-by-token streaming."""
+async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant, survey, db, near_limit: bool):
+    """Stream text + tool results as SSE events."""
     full_text = []
     tool_events = []
-    tool_uses = {}  # Track tool_use blocks being built by index
-
+    tools = build_survey_tools(cfg)
     try:
-        async with client.messages.stream(
-            model=CLAUDE_CHAT_MODEL,
-            max_tokens=1024,
-            system=system,
-            messages=history,
-            tools=SURVEY_TOOLS,
-        ) as stream:
-            async for event in stream:
-                if event.type == "content_block_delta":
-                    delta = event.delta
-                    if delta.type == "text_delta":
-                        full_text.append(delta.text)
-                        yield f"data: {json.dumps({'t': 'chunk', 'v': delta.text})}\n\n"
-                    elif delta.type == "input_json_delta":
-                        idx = event.index
-                        if idx in tool_uses:
-                            tool_uses[idx]["input_json"] += delta.partial_json
-                elif event.type == "content_block_start":
-                    block = event.content_block
-                    if block.type == "tool_use":
-                        tool_uses[event.index] = {
-                            "name": block.name,
-                            "input_json": "",
-                        }
-                elif event.type == "content_block_stop":
-                    idx = event.index
-                    if idx in tool_uses:
-                        tool = tool_uses.pop(idx)
-                        tool_input = json.loads(tool["input_json"]) if tool["input_json"] else {}
-                        events = await _process_tool_call(tool["name"], tool_input)
-                        tool_events.extend(events)
-
-        # Send tool events after stream completes
-        for event in tool_events:
-            yield f"data: {json.dumps(event)}\n\n"
-
+        async for ev in stream_chat(cfg, system, history, tools=tools if not near_limit else None, max_tokens=1024):
+            if ev["type"] == "text":
+                full_text.append(ev["text"])
+                yield f"data: {json.dumps({'t': 'chunk', 'v': ev['text']})}\n\n"
+            elif ev["type"] == "tool_use":
+                if ev["name"] == "show_image" and cfg.image_mode == "generate":
+                    yield f"data: {json.dumps({'t': 'status', 'v': 'Creating an illustration…'})}\n\n"
+                events = await _process_tool_call(ev["name"], ev["input"], cfg, db, survey.id, participant.id)
+                tool_events.extend(events)
+                for event in events:
+                    yield f"data: {json.dumps(event)}\n\n"
+        yield f"data: {json.dumps({'t': 'status', 'v': ''})}\n\n"
+    except LLMError as e:
+        yield f"data: {json.dumps({'t': 'error', 'v': e.message})}\n\n"
+        return
     except Exception as e:
-        yield f"data: {json.dumps({'t': 'error', 'v': str(e)})}\n\n"
+        logger.error(f"Chat stream error: {e}", exc_info=True)
+        yield f"data: {json.dumps({'t': 'error', 'v': 'Something went wrong. Please try again.'})}\n\n"
         return
 
     assistant_text = "".join(full_text)
     if not assistant_text and tool_events:
         assistant_text = "(presented interactive content)"
+    if not assistant_text:
+        assistant_text = "Could you tell me a bit more about that?"
+        yield f"data: {json.dumps({'t': 'chunk', 'v': assistant_text})}\n\n"
 
     db.add(ChatMessage(participant_id=participant.id, role="assistant", content=assistant_text))
-
     if tool_events:
-        db.add(ChatMessage(
-            participant_id=participant.id, role="assistant",
-            content=f"[TOOL_EVENTS]{json.dumps(tool_events)}",
-        ))
+        db.add(ChatMessage(participant_id=participant.id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
 
     is_complete = near_limit
     if is_complete:
@@ -1306,7 +1696,6 @@ async def _chat_stream_generator_v2(
         participant.status = ParticipantStatus.COMPLETED
         participant.completed_at = now
         participant.duration_seconds = (now - participant.started_at).total_seconds()
-
     db.commit()
     yield f"data: {json.dumps({'t': 'done', 'is_complete': is_complete})}\n\n"
 
@@ -1333,21 +1722,20 @@ def resume_survey_session(req: ResumeSessionRequest, db: Session = Depends(get_d
 
     msgs = sorted(participant.messages, key=lambda m: m.created_at)
     user_msg_count = sum(1 for m in msgs if m.role == "user")
-
+    survey = participant.survey
     return {
         "session_token": participant.session_token,
-        "survey_title": participant.survey.title,
-        "max_messages": participant.survey.max_messages,
-        "collect_name": participant.survey.collect_name,
-        "collect_email": participant.survey.collect_email,
-        "collect_phone": participant.survey.collect_phone,
+        "survey_title": survey.title,
+        "survey_topic": survey.topic,
+        "max_messages": survey.max_messages,
+        "collect_name": survey.collect_name,
+        "collect_email": survey.collect_email,
+        "collect_phone": survey.collect_phone,
         "user_message_count": user_msg_count,
+        "image_mode": survey.image_mode or "stock",
+        "briefing": _briefing_payload(survey),
         "messages": [
-            {
-                "role": m.role,
-                "content": m.content,
-                "created_at": m.created_at.isoformat(),
-            }
+            {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
             for m in msgs
         ],
     }
@@ -1368,8 +1756,11 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="This survey session has ended")
     if participant.survey.status != SurveyStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="This survey has been closed")
+    message = (req.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is empty")
 
-    db.add(ChatMessage(participant_id=participant.id, role="user", content=req.message))
+    db.add(ChatMessage(participant_id=participant.id, role="user", content=message))
     db.commit()
 
     msgs = sorted(participant.messages, key=lambda m: m.created_at)
@@ -1378,12 +1769,14 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
         for m in msgs
         if not m.content.startswith("[TOOL_EVENTS]")
     ]
-    history.append({"role": "user", "content": req.message})
+    history.append({"role": "user", "content": message})
 
     user_message_count = sum(1 for m in history if m["role"] == "user")
     near_limit = user_message_count >= participant.survey.max_messages
 
-    system = participant.survey.system_prompt + CONVERSATIONAL_PROMPT + TOOL_USE_PROMPT
+    survey = participant.survey
+    cfg = resolve_llm_config(db, survey)
+    system = _build_chat_system(survey, cfg)
     if near_limit:
         system += (
             "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
@@ -1391,11 +1784,7 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             "and end the conversation warmly. Do not use tools in this final message.]"
         )
 
-    api_key = resolve_api_key(db, participant.survey)
-    client = get_claude_client(api_key)
-    gen = _chat_stream_generator_v2(
-        client, system, history, participant, db, near_limit
-    )
+    gen = _chat_stream_generator(cfg, system, history, participant, survey, db, near_limit)
     return StreamingResponse(
         gen,
         media_type="text/event-stream",
@@ -1420,18 +1809,34 @@ def complete_survey_session(req: ChatRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/survey/contact-info")
 def submit_contact_info(req: ContactInfoRequest, db: Session = Depends(get_db)):
-    """Save participant contact details after survey completion."""
+    """Save participant contact details."""
     participant = db.query(Participant).filter(Participant.session_token == req.session_token).first()
     if not participant:
         raise HTTPException(status_code=404, detail="Session not found")
     if req.name:
-        participant.contact_name = req.name.strip()
+        participant.contact_name = req.name.strip()[:255]
     if req.email:
-        participant.contact_email = req.email.strip()
+        participant.contact_email = req.email.strip()[:255]
     if req.phone:
-        participant.contact_phone = req.phone.strip()
+        participant.contact_phone = req.phone.strip()[:100]
     db.commit()
     return {"ok": True}
+
+
+@app.get("/api/survey/my-report")
+def participant_report(session_token: str, db: Session = Depends(get_db)):
+    """Printable copy of the participant's own conversation."""
+    participant = (
+        db.query(Participant)
+        .filter(Participant.session_token == session_token)
+        .options(joinedload(Participant.messages), joinedload(Participant.survey))
+        .first()
+    )
+    if not participant:
+        raise HTTPException(status_code=404, detail="Session not found")
+    msgs = sorted(participant.messages, key=lambda m: m.created_at)
+    html = build_participant_report_html(participant.survey, participant, msgs, asset_loader=_asset_loader(db))
+    return HTMLResponse(html, headers=NO_CACHE)
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1445,7 +1850,137 @@ def admin_me(db: Session = Depends(get_db), admin: AdminUser = Depends(get_curre
         "username": admin.username,
         "role": admin.role,
         "has_api_key": bool(admin.encrypted_api_key),
+        "has_openrouter_key": bool(admin.encrypted_openrouter_key),
+        "llm_provider": admin.llm_provider or "",
+        "llm_model": admin.llm_model or "",
     }
+
+
+@app.get("/api/admin/settings")
+def get_settings(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    effective = resolve_llm_config(db, admin=admin)
+    return {
+        "llm_provider": admin.llm_provider or "",
+        "llm_model": admin.llm_model or "",
+        "has_api_key": bool(admin.encrypted_api_key),
+        "has_openrouter_key": bool(admin.encrypted_openrouter_key),
+        "image_provider": admin.image_provider or "",
+        "image_model": admin.image_model or "",
+        "image_base_url": admin.image_base_url or "",
+        "has_image_api_key": bool(admin.encrypted_image_api_key),
+        "effective": {
+            "provider": effective.provider,
+            "model": effective.model,
+            "analysis_model": effective.analysis_model,
+            "has_key": bool(effective.api_key),
+            "image_provider": effective.image_provider,
+            "image_model": effective.image_model,
+            "has_image_key": bool(effective.image_api_key),
+        },
+        "env": {
+            "anthropic_key": bool(ANTHROPIC_API_KEY),
+            "openrouter_key": bool(OPENROUTER_API_KEY),
+            "unsplash": bool(UNSPLASH_ACCESS_KEY),
+            "pexels": bool(PEXELS_API_KEY),
+            "openai_key": bool(os.environ.get("OPENAI_API_KEY")),
+        },
+        "defaults": {
+            "anthropic": {"chat": CLAUDE_CHAT_MODEL, "analysis": CLAUDE_ANALYSIS_MODEL},
+            "openrouter": {"chat": default_model("openrouter"), "analysis": default_model("openrouter", analysis=True)},
+        },
+        "image_providers": IMAGE_PROVIDERS,
+    }
+
+
+def _apply_settings(target: AdminUser, req: UpdateSettings):
+    if req.api_key is not None:
+        target.encrypted_api_key = encrypt_api_key(req.api_key.strip()) if req.api_key.strip() else None
+    if req.openrouter_key is not None:
+        target.encrypted_openrouter_key = encrypt_api_key(req.openrouter_key.strip()) if req.openrouter_key.strip() else None
+    if req.llm_provider is not None:
+        if req.llm_provider and req.llm_provider not in PROVIDERS:
+            raise HTTPException(status_code=400, detail="Invalid LLM provider")
+        target.llm_provider = req.llm_provider or None
+    if req.llm_model is not None:
+        target.llm_model = req.llm_model.strip() or None
+    if req.image_provider is not None:
+        if req.image_provider and req.image_provider not in IMAGE_PROVIDERS:
+            raise HTTPException(status_code=400, detail="Invalid image provider")
+        target.image_provider = req.image_provider or None
+    if req.image_model is not None:
+        target.image_model = req.image_model.strip() or None
+    if req.image_base_url is not None:
+        target.image_base_url = req.image_base_url.strip() or None
+    if req.image_api_key is not None:
+        target.encrypted_image_api_key = encrypt_api_key(req.image_api_key.strip()) if req.image_api_key.strip() else None
+
+
+@app.put("/api/admin/settings")
+def update_settings(req: UpdateSettings, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    _apply_settings(admin, req)
+    db.commit()
+    return {
+        "ok": True,
+        "has_api_key": bool(admin.encrypted_api_key),
+        "has_openrouter_key": bool(admin.encrypted_openrouter_key),
+        "has_image_api_key": bool(admin.encrypted_image_api_key),
+    }
+
+
+@app.get("/api/admin/models")
+async def list_models(provider: str = "openrouter", db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """Model catalogue for the settings/wizard dropdowns."""
+    if provider == "anthropic":
+        return {
+            "chat": [
+                {"id": CLAUDE_CHAT_MODEL, "name": f"{CLAUDE_CHAT_MODEL} (default chat)"},
+                {"id": CLAUDE_ANALYSIS_MODEL, "name": f"{CLAUDE_ANALYSIS_MODEL} (default analysis)"},
+                {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5"},
+                {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6"},
+                {"id": "claude-sonnet-5", "name": "Claude Sonnet 5"},
+                {"id": "claude-opus-5", "name": "Claude Opus 5"},
+            ],
+            "image": [],
+        }
+    key = _dec(admin.encrypted_openrouter_key) or OPENROUTER_API_KEY
+    try:
+        return await list_openrouter_models(key)
+    except LLMError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+
+@app.post("/api/admin/test-image")
+async def test_image(req: TestImageRequest, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    """Generate a sample image with the given (or stored) settings and return it inline."""
+    base = resolve_llm_config(db, admin=admin)
+    provider = req.provider or base.image_provider
+    if provider not in IMAGE_PROVIDERS:
+        raise HTTPException(status_code=400, detail="Invalid image provider")
+    key = (req.api_key or "").strip()
+    if not key:
+        key = _dec(admin.encrypted_image_api_key) if admin.image_provider == provider else ""
+        if not key and provider == "openrouter":
+            key = _dec(admin.encrypted_openrouter_key) or OPENROUTER_API_KEY
+        if not key and provider == "openai":
+            key = os.environ.get("OPENAI_API_KEY", "")
+        if not key and provider == "pollinations":
+            key = os.environ.get("POLLINATIONS_API_KEY", "")
+    cfg = LLMConfig(
+        provider=base.provider, model=base.model, api_key=base.api_key,
+        image_mode="generate", image_provider=provider,
+        image_model=(req.model or "").strip() or (base.image_model if base.image_provider == provider else ""),
+        image_base_url=(req.base_url or "").strip() or base.image_base_url,
+        image_api_key=key, image_style=(req.style or "").strip(),
+    )
+    prompt = (req.prompt or "").strip() or "A friendly classroom scene with students discussing ideas around a table"
+    try:
+        data, mime = await generate_image(cfg, prompt)
+    except LLMError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
+    import base64 as _b64
+    return {"data_url": f"data:{mime};base64,{_b64.b64encode(data).decode()}", "provider": provider, "model": cfg.image_model}
 
 
 @app.post("/api/admin/invite")
@@ -1487,6 +2022,8 @@ def list_teachers(db: Session = Depends(get_db), admin: AdminUser = Depends(get_
             "id": str(t.id),
             "username": t.username,
             "has_api_key": bool(t.encrypted_api_key),
+            "has_openrouter_key": bool(t.encrypted_openrouter_key),
+            "llm_provider": t.llm_provider or "",
             "survey_count": survey_count,
             "created_at": t.created_at.isoformat(),
         })
@@ -1502,26 +2039,12 @@ def remove_teacher(teacher_id: str, db: Session = Depends(get_db), admin: AdminU
     ).first()
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
-    # Reassign teacher's surveys to the admin
     db.query(Survey).filter(Survey.admin_id == teacher.id).update({"admin_id": admin.id})
-    # Clean up analysis messages
     db.query(AnalysisMessage).filter(AnalysisMessage.admin_id == teacher.id).update({"admin_id": admin.id})
-    # Delete invite codes used by this teacher
     db.query(InviteCode).filter(InviteCode.used_by_id == teacher.id).update({"used_by_id": None, "used_at": None})
     db.delete(teacher)
     db.commit()
     return {"ok": True}
-
-
-@app.put("/api/admin/settings")
-def update_settings(req: UpdateSettings, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
-    if req.api_key is not None:
-        if req.api_key.strip():
-            admin.encrypted_api_key = encrypt_api_key(req.api_key.strip())
-        else:
-            admin.encrypted_api_key = None
-    db.commit()
-    return {"ok": True, "has_api_key": bool(admin.encrypted_api_key)}
 
 
 @app.put("/api/admin/teachers/{teacher_id}/api-key")
@@ -1533,13 +2056,9 @@ def update_teacher_api_key(teacher_id: str, req: UpdateSettings, db: Session = D
     ).first()
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
-    if req.api_key is not None:
-        if req.api_key.strip():
-            teacher.encrypted_api_key = encrypt_api_key(req.api_key.strip())
-        else:
-            teacher.encrypted_api_key = None
+    _apply_settings(teacher, req)
     db.commit()
-    return {"ok": True, "has_api_key": bool(teacher.encrypted_api_key)}
+    return {"ok": True, "has_api_key": bool(teacher.encrypted_api_key), "has_openrouter_key": bool(teacher.encrypted_openrouter_key)}
 
 
 @app.get("/api/admin/invites")
@@ -1564,7 +2083,7 @@ def list_invites(db: Session = Depends(get_db), admin: AdminUser = Depends(get_c
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": "2.0.0"}
 
 
 @app.get("/api/admin-info")

@@ -3,354 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Survey Admin</title>
+    <title>Survey Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            --glass: rgba(255,255,255,0.55);
-            --glass-border: rgba(255,255,255,0.3);
-            --glass-strong: rgba(255,255,255,0.75);
-            --blur: 20px;
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --primary-end: #8b5cf6;
-            --text: #1e1b4b;
-            --muted: #6b7280;
-            --border: rgba(255,255,255,0.35);
-            --success: #10b981;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --radius: 16px;
-            --radius-sm: 10px;
+            --bg: #f4f6fa; --surface: #fff; --surface-2: #f8fafc;
+            --text: #0f172a; --text-2: #334155; --muted: #64748b;
+            --border: #e2e8f0; --border-2: #cbd5e1;
+            --primary: #1d4ed8; --primary-hover: #1e40af; --primary-soft: #dbeafe; --primary-ink: #1e3a8a;
+            --success: #16a34a; --danger: #dc2626; --warning: #d97706;
+            --radius: 14px; --radius-sm: 10px;
+            --shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
         }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #e8f0fe 0%, #f0e6ff 50%, #e8f0fe 100%);
-            color: var(--text); min-height: 100vh;
-        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; line-height: 1.5; }
+        button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
         .hidden { display: none !important; }
+        a { color: var(--primary); }
 
-        /* Orbs */
-        .orb { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; z-index: 0; animation: float 20s ease-in-out infinite; }
-        .orb-1 { width: 400px; height: 400px; background: #c4b5fd; top: -100px; right: -100px; }
-        .orb-2 { width: 350px; height: 350px; background: #93c5fd; bottom: -80px; left: -80px; animation-delay: -7s; }
-        @keyframes float { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(20px,-15px); } }
-
-        /* ── Auth ── */
-        .auth-wrapper { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; position: relative; z-index: 1; }
-        .auth-card {
-            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
-            border: 1px solid var(--glass-border); border-radius: var(--radius);
-            padding: 40px 36px; width: 100%; max-width: 400px; text-align: center;
-            box-shadow: 0 8px 32px rgba(99,102,241,0.08);
-        }
+        /* Auth */
+        .auth-wrapper { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+        .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 36px 32px; width: 100%; max-width: 400px; box-shadow: var(--shadow); }
+        .brand-mark { width: 44px; height: 44px; border-radius: 12px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-bottom: 16px; }
         .auth-card h1 { font-size: 1.4rem; margin-bottom: 4px; }
-        .auth-card .sub { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
-        .form-group { margin-bottom: 16px; text-align: left; }
-        .form-group label { font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px; }
+        .auth-card .sub { color: var(--muted); margin-bottom: 24px; font-size: .92rem; }
+
+        /* Forms */
+        .form-group { margin-bottom: 14px; text-align: left; }
+        .form-group label { font-size: .82rem; font-weight: 600; display: block; margin-bottom: 5px; color: var(--text-2); }
+        .form-group label span { font-weight: 400; color: var(--muted); }
         .form-group input, .form-group textarea, .form-group select {
-            width: 100%; padding: 10px 12px; background: rgba(255,255,255,0.5);
-            border: 1.5px solid var(--border); border-radius: 8px;
-            font-size: 0.93rem; outline: none; font-family: inherit; transition: border-color 0.2s;
+            width: 100%; padding: 10px 12px; background: #fff; border: 1px solid var(--border-2); border-radius: 8px;
+            outline: none; transition: border-color .15s, box-shadow .15s; font-size: .93rem;
         }
-        .form-group input:focus, .form-group textarea:focus { border-color: var(--primary); }
-        .wizard-step { margin-bottom: 24px; padding: 20px; background: rgba(255,255,255,0.3); border-radius: var(--radius-sm); border: 1px solid var(--border); }
-        .wizard-step-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-        .wizard-step-number { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--primary-end)); color: #fff; font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .wizard-step-title { font-size: 0.95rem; font-weight: 600; }
-        .wizard-step .form-group:last-child { margin-bottom: 0; }
-        .type-desc { font-size: 0.82rem; color: var(--muted); margin-top: -8px; margin-bottom: 12px; min-height: 1.2em; }
-        .btn {
-            display: inline-block; padding: 10px 24px; font-size: 0.93rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            background: linear-gradient(135deg, var(--primary), var(--primary-end)); color: #fff;
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.25); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .btn-outline { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); }
-        .btn-outline:hover { background: rgba(99,102,241,0.08); transform: translateY(-1px); box-shadow: none; }
+        .form-group textarea { line-height: 1.5; resize: vertical; }
+        .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+        .form-group .help { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 640px) { .form-row { grid-template-columns: 1fr; } }
+        .check-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+        .check-row label { font-size: .88rem; font-weight: 400; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .radio-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+        .radio-card { border: 1px solid var(--border-2); border-radius: var(--radius-sm); padding: 12px 14px; cursor: pointer; background: #fff; transition: all .12s; }
+        .radio-card:hover { border-color: var(--primary); }
+        .radio-card.active { border-color: var(--primary); background: #eff6ff; box-shadow: 0 0 0 2px var(--primary-soft); }
+        .radio-card .rc-title { font-weight: 600; font-size: .9rem; display: flex; align-items: center; gap: 8px; }
+        .radio-card .rc-desc { font-size: .78rem; color: var(--muted); margin-top: 3px; }
+        .section { margin-bottom: 20px; padding: 18px 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+        .section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .section-num { width: 26px; height: 26px; border-radius: 50%; background: var(--primary); color: #fff; font-size: .78rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .section-title { font-size: .95rem; font-weight: 600; }
+        .section-sub { font-size: .8rem; color: var(--muted); margin-left: auto; }
+        .section .form-group:last-child { margin-bottom: 0; }
+        .type-desc { font-size: .8rem; color: var(--muted); margin-top: -6px; margin-bottom: 10px; min-height: 1.2em; }
+
+        /* Buttons */
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 18px; font-size: .9rem; font-weight: 600; border: 1px solid transparent; border-radius: 9px; cursor: pointer; background: var(--primary); color: #fff; transition: background .15s, transform .1s; white-space: nowrap; }
+        .btn:hover { background: var(--primary-hover); }
+        .btn:active { transform: translateY(1px); }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-outline { background: transparent; border-color: var(--border-2); color: var(--text-2); }
+        .btn-outline:hover { background: var(--surface-2); color: var(--text); }
         .btn-danger { background: var(--danger); }
-        .btn-danger:hover { box-shadow: 0 4px 16px rgba(239,68,68,0.25); }
+        .btn-danger:hover { background: #b91c1c; }
+        .btn-danger.btn-outline { background: transparent; color: var(--danger); border-color: #fecaca; }
+        .btn-danger.btn-outline:hover { background: #fef2f2; }
         .btn-success { background: var(--success); }
-        .btn-sm { padding: 6px 14px; font-size: 0.82rem; }
-        .error { color: var(--danger); margin-top: 8px; font-size: 0.82rem; }
-        .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 0.88rem; text-decoration: underline; }
+        .btn-sm { padding: 6px 12px; font-size: .82rem; }
+        .btn-ai { background: linear-gradient(135deg, #4f46e5, #7c3aed); }
+        .btn-ai:hover { background: linear-gradient(135deg, #4338ca, #6d28d9); }
+        .error { color: var(--danger); margin-top: 8px; font-size: .82rem; min-height: 1.2em; }
+        .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: .88rem; text-decoration: underline; }
+        .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
+        .spinner.dark { border-color: rgba(15,23,42,.15); border-top-color: var(--primary); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: .72rem; font-weight: 600; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
 
-        /* ── Layout ── */
-        .topbar {
-            background: var(--glass-strong); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
-            border-bottom: 1px solid var(--glass-border);
-            padding: 12px 28px; display: flex; align-items: center;
-            justify-content: space-between; position: sticky; top: 0; z-index: 10;
-        }
-        .topbar h1 { font-size: 1.1rem; }
-        .topbar .user-info { display: flex; align-items: center; gap: 12px; }
-        .main { max-width: 1100px; margin: 0 auto; padding: 28px 20px; position: relative; z-index: 1; }
+        /* Layout */
+        .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+        .topbar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; }
+        .topbar .brand .mark { width: 32px; height: 32px; border-radius: 9px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; }
+        .topbar .user-info { display: flex; align-items: center; gap: 10px; }
+        .main { max-width: 1140px; margin: 0 auto; padding: 28px 20px; }
 
-        /* ── Glass Card ── */
-        .glass-card {
-            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
-            border: 1px solid var(--glass-border); border-radius: var(--radius);
-            padding: 24px; margin-bottom: 20px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.04);
-        }
-        .glass-card h3 { margin-bottom: 16px; font-size: 1rem; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(15,23,42,.03); }
+        .card h3 { margin-bottom: 14px; font-size: 1rem; }
 
-        /* ── Survey Grid ── */
-        .survey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-        .survey-card {
-            background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
-            border: 1px solid var(--glass-border); border-radius: var(--radius);
-            padding: 20px; cursor: pointer; transition: all 0.2s;
-        }
-        .survey-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.12); border-color: var(--primary); }
-        .survey-card h3 { font-size: 1rem; margin-bottom: 6px; }
-        .survey-card .code { font-family: monospace; font-size: 1.05rem; font-weight: 700; color: var(--primary); }
-        .badge {
-            display: inline-block; padding: 2px 10px; border-radius: 99px;
-            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
-        }
-        .badge-active { background: rgba(16,185,129,0.15); color: #065f46; }
-        .badge-closed { background: rgba(239,68,68,0.15); color: #991b1b; }
-        .badge-draft { background: rgba(99,102,241,0.15); color: #3730a3; }
-        .stats-row { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
-        .stat { text-align: center; }
-        .stat .num { font-size: 1.2rem; font-weight: 700; }
-        .stat .lbl { font-size: 0.72rem; color: var(--muted); }
+        /* Survey grid */
+        .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .page-head h2 { font-size: 1.3rem; }
+        .survey-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+        .survey-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; cursor: pointer; transition: all .15s; }
+        .survey-card:hover { border-color: var(--primary); box-shadow: var(--shadow); transform: translateY(-1px); }
+        .survey-card h3 { font-size: 1rem; margin-bottom: 4px; }
+        .survey-card .topic { font-size: .82rem; color: var(--muted); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .survey-card .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1rem; font-weight: 700; color: var(--primary); letter-spacing: .08em; }
+        .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+        .badge-active { background: #dcfce7; color: #166534; }
+        .badge-closed { background: #fee2e2; color: #991b1b; }
+        .badge-draft { background: var(--primary-soft); color: var(--primary-ink); }
+        .badge-completed { background: #dcfce7; color: #166534; }
+        .badge-abandoned { background: #fef3c7; color: #92400e; }
+        .stats-row { display: flex; gap: 18px; margin-top: 12px; }
+        .stat .num { font-size: 1.15rem; font-weight: 700; }
+        .stat .lbl { font-size: .72rem; color: var(--muted); }
+        .feature-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 
-        /* ── Detail View ── */
-        .detail-header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-        .detail-header h2 { flex: 1; font-size: 1.2rem; }
-        .stats-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
-        .stat-box {
-            background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
-            padding: 16px 22px; text-align: center; min-width: 110px;
-        }
+        /* Detail */
+        .detail-header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+        .detail-header h2 { flex: 1; font-size: 1.3rem; min-width: 200px; }
+        .detail-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; font-weight: 700; color: var(--primary); letter-spacing: .08em; }
+        .stats-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+        .stat-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 20px; min-width: 120px; }
         .stat-box .num { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
-        .stat-box .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+        .stat-box .lbl { font-size: .76rem; color: var(--muted); }
+        .toolbar { margin-bottom: 18px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-        /* ── Tabs ── */
-        .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
-        .tab {
-            padding: 10px 18px; font-weight: 600; cursor: pointer;
-            border-bottom: 3px solid transparent; color: var(--muted);
-            transition: all 0.15s; background: none; border-top: none; border-left: none; border-right: none;
-            font-size: 0.9rem; white-space: nowrap;
-        }
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; overflow-x: auto; }
+        .tab { padding: 10px 16px; font-weight: 600; cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--muted); background: none; font-size: .9rem; white-space: nowrap; }
         .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
-        /* ── Insights ── */
+        /* Insights */
         .insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 700px) { .insights-grid { grid-template-columns: 1fr; } }
-
         .sentiment-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .sentiment-bar .label { width: 70px; font-size: 0.82rem; font-weight: 600; }
-        .sentiment-bar .bar-bg {
-            flex: 1; height: 24px; border-radius: 12px; background: rgba(0,0,0,0.06); overflow: hidden;
-        }
-        .sentiment-bar .bar-fill {
-            height: 100%; border-radius: 12px; transition: width 0.5s ease;
-            display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;
-            font-size: 0.72rem; font-weight: 700; color: #fff; min-width: 0;
-        }
-        .bar-positive { background: linear-gradient(90deg, #10b981, #34d399); }
-        .bar-neutral { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-        .bar-negative { background: linear-gradient(90deg, #ef4444, #f87171); }
-
-        .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .sentiment-bar .label { width: 70px; font-size: .82rem; font-weight: 600; }
+        .sentiment-bar .bar-bg { flex: 1; height: 22px; border-radius: 6px; background: var(--surface-2); overflow: hidden; border: 1px solid var(--border); }
+        .sentiment-bar .bar-fill { height: 100%; transition: width .5s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: .72rem; font-weight: 700; color: #fff; min-width: 0; }
+        .bar-positive { background: var(--success); } .bar-neutral { background: var(--warning); } .bar-negative { background: var(--danger); }
+        .theme-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
         .theme-item:last-child { border-bottom: none; }
-        .theme-rank { width: 24px; height: 24px; border-radius: 6px; background: rgba(99,102,241,0.1); color: var(--primary); font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-        .theme-name { flex: 1; font-size: 0.88rem; font-weight: 500; }
-        .theme-count { font-size: 0.78rem; color: var(--muted); font-weight: 600; background: rgba(0,0,0,0.04); padding: 2px 8px; border-radius: 99px; }
-
+        .theme-rank { width: 24px; height: 24px; border-radius: 6px; background: var(--primary-soft); color: var(--primary-ink); font-size: .75rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+        .theme-name { flex: 1; font-size: .88rem; font-weight: 500; }
+        .theme-count { font-size: .78rem; color: var(--muted); font-weight: 600; background: var(--surface-2); padding: 2px 8px; border-radius: 99px; }
         .engagement-histogram { display: flex; align-items: flex-end; gap: 4px; height: 100px; padding-top: 10px; }
-        .histogram-bar {
-            flex: 1; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-end));
-            transition: height 0.5s ease; min-height: 2px; position: relative;
-        }
-        .histogram-bar .bar-label {
-            position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
-            font-size: 0.65rem; color: var(--muted);
-        }
+        .histogram-bar { flex: 1; border-radius: 4px 4px 0 0; background: var(--primary); transition: height .5s ease; min-height: 2px; position: relative; }
+        .histogram-bar .bar-label { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font-size: .65rem; color: var(--muted); }
 
-        /* ── Tables ── */
-        .participant-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        .participant-table th {
-            text-align: left; padding: 10px 12px; border-bottom: 2px solid rgba(0,0,0,0.08);
-            font-size: 0.75rem; color: var(--muted); text-transform: uppercase; cursor: pointer;
-            user-select: none; white-space: nowrap;
-        }
+        /* Tables */
+        .participant-table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+        .participant-table th { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; cursor: pointer; user-select: none; white-space: nowrap; }
         .participant-table th:hover { color: var(--primary); }
-        .participant-table td { padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.04); }
-        .participant-table tr { cursor: pointer; transition: background 0.15s; }
-        .participant-table tr:hover { background: rgba(99,102,241,0.04); }
-        .sentiment-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .dot-positive { background: var(--success); }
-        .dot-neutral { background: var(--warning); }
-        .dot-negative { background: var(--danger); }
-        .engagement-badge { font-size: 0.78rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
-        .eng-high { background: rgba(16,185,129,0.15); color: #065f46; }
-        .eng-mid { background: rgba(245,158,11,0.15); color: #92400e; }
-        .eng-low { background: rgba(239,68,68,0.15); color: #991b1b; }
+        .participant-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+        .participant-table tr { cursor: pointer; }
+        .participant-table tbody tr:hover { background: var(--surface-2); }
+        .sentiment-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+        .dot-positive { background: var(--success); } .dot-neutral { background: var(--warning); } .dot-negative { background: var(--danger); }
+        .engagement-badge { font-size: .76rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+        .eng-high { background: #dcfce7; color: #166534; } .eng-mid { background: #fef3c7; color: #92400e; } .eng-low { background: #fee2e2; color: #991b1b; }
 
-        /* ── Conversation viewer ── */
-        .convo-viewer {
-            max-height: 500px; overflow-y: auto; padding: 16px;
-            background: rgba(255,255,255,0.4); border-radius: var(--radius-sm);
-        }
-        .convo-msg { margin-bottom: 10px; }
-        .convo-msg .role { font-weight: 700; font-size: 0.75rem; text-transform: uppercase; color: var(--muted); }
-        .convo-msg .text { margin-top: 2px; white-space: pre-wrap; line-height: 1.5; font-size: 0.9rem; }
+        /* Conversation viewer */
+        .convo-viewer { max-height: 560px; overflow-y: auto; padding: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 10px; }
+        .convo-msg { max-width: 82%; padding: 9px 13px; border-radius: 12px; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; }
+        .convo-msg.assistant { background: #fff; border: 1px solid var(--border); align-self: flex-start; }
+        .convo-msg.user { background: var(--primary); color: #fff; align-self: flex-end; }
+        .convo-msg .role { font-weight: 700; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; opacity: .7; margin-bottom: 2px; }
+        .convo-media { max-width: 60%; align-self: flex-start; }
+        .convo-media img { max-width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; }
+        .convo-media .cap { font-size: .76rem; color: var(--muted); margin-top: 3px; }
+        .convo-opts { display: flex; gap: 6px; flex-wrap: wrap; align-self: flex-start; }
+        .convo-opts span { border: 1px solid var(--border-2); border-radius: 99px; padding: 2px 10px; font-size: .78rem; color: var(--text-2); background: #fff; }
 
-        /* ── Analysis Chat ── */
-        .analysis-chat { display: flex; flex-direction: column; height: 480px; }
-        .analysis-messages {
-            flex: 1; overflow-y: auto; padding: 16px;
-            background: rgba(255,255,255,0.3); border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-            display: flex; flex-direction: column; gap: 10px;
-        }
-        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: 0.88rem; line-height: 1.5; word-wrap: break-word; }
-        .analysis-msg table { border-collapse: collapse; margin: 8px 0; font-size: 0.82rem; width: 100%; }
-        .analysis-msg th, .analysis-msg td { border: 1px solid rgba(0,0,0,0.12); padding: 5px 8px; text-align: left; }
-        .analysis-msg th { background: rgba(99,102,241,0.08); font-weight: 600; }
+        /* Analysis chat */
+        .analysis-chat { display: flex; flex-direction: column; height: 520px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+        .analysis-messages { flex: 1; overflow-y: auto; padding: 16px; background: var(--surface-2); display: flex; flex-direction: column; gap: 10px; }
+        .analysis-msg { max-width: 85%; padding: 10px 14px; border-radius: 14px; font-size: .88rem; line-height: 1.5; word-wrap: break-word; }
+        .analysis-msg table { border-collapse: collapse; margin: 8px 0; font-size: .82rem; width: 100%; }
+        .analysis-msg th, .analysis-msg td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; }
+        .analysis-msg th { background: var(--primary-soft); font-weight: 600; }
         .analysis-msg ul, .analysis-msg ol { margin: 4px 0 4px 18px; }
         .analysis-msg p { margin: 4px 0; }
         .analysis-msg h1, .analysis-msg h2, .analysis-msg h3, .analysis-msg h4 { margin: 10px 0 4px; }
-        .analysis-msg h1 { font-size: 1.1rem; }
-        .analysis-msg h2 { font-size: 1rem; }
-        .analysis-msg h3 { font-size: 0.95rem; }
-        .analysis-msg hr { border: none; border-top: 1px solid rgba(0,0,0,0.12); margin: 10px 0; }
+        .analysis-msg h1 { font-size: 1.1rem; } .analysis-msg h2 { font-size: 1rem; } .analysis-msg h3 { font-size: .95rem; }
+        .analysis-msg hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
         .analysis-msg blockquote { border-left: 3px solid var(--primary); padding-left: 10px; margin: 6px 0; color: var(--muted); font-style: italic; }
-        .analysis-msg.user {
-            white-space: pre-wrap;
-            background: linear-gradient(135deg, var(--primary), var(--primary-end));
-            color: #fff; align-self: flex-end; border-bottom-right-radius: 4px;
-        }
-        .analysis-msg.assistant {
-            white-space: normal;
-            background: var(--glass-strong); backdrop-filter: blur(12px);
-            align-self: flex-start; border-bottom-left-radius: 4px;
-            border: 1px solid var(--glass-border);
-        }
-        .analysis-input-area {
-            display: flex; gap: 8px; padding: 12px;
-            background: var(--glass-strong); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-            border-top: 1px solid var(--glass-border);
-        }
-        .analysis-input-area input {
-            flex: 1; padding: 10px 12px; background: rgba(255,255,255,0.5);
-            border: 1.5px solid var(--border); border-radius: 8px; outline: none; font-size: 0.88rem;
-        }
+        .analysis-msg.user { white-space: pre-wrap; background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .analysis-msg.assistant { white-space: normal; background: #fff; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+        .analysis-input-area { display: flex; gap: 8px; padding: 12px; background: #fff; border-top: 1px solid var(--border); }
+        .analysis-input-area input { flex: 1; padding: 10px 12px; border: 1px solid var(--border-2); border-radius: 8px; outline: none; font-size: .88rem; }
         .analysis-input-area input:focus { border-color: var(--primary); }
-
-        /* ── Analysis Select Mode ── */
-        .analysis-toolbar {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 12px; background: var(--glass);
-            border-bottom: 1px solid var(--glass-border); border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-            min-height: 40px;
-        }
-        .analysis-toolbar .btn-select-toggle {
-            padding: 5px 14px; font-size: 0.78rem; font-weight: 600;
-            border: 1.5px solid var(--primary); color: var(--primary); background: transparent;
-            border-radius: 6px; cursor: pointer; transition: all 0.15s;
-        }
-        .analysis-toolbar .btn-select-toggle.active {
-            background: var(--primary); color: #fff;
-        }
-        .analysis-select-bar {
-            display: none; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--muted);
-        }
+        .analysis-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #fff; border-bottom: 1px solid var(--border); min-height: 40px; }
+        .analysis-toolbar .btn-select-toggle { padding: 5px 12px; font-size: .78rem; font-weight: 600; border: 1px solid var(--border-2); color: var(--text-2); background: transparent; border-radius: 6px; cursor: pointer; }
+        .analysis-toolbar .btn-select-toggle.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .analysis-select-bar { display: none; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); }
         .analysis-select-bar.visible { display: flex; }
-        .analysis-select-bar .btn-dl-pdf {
-            padding: 5px 14px; font-size: 0.78rem; font-weight: 600;
-            background: linear-gradient(135deg, var(--primary), var(--primary-end));
-            color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: transform 0.15s;
-        }
-        .analysis-select-bar .btn-dl-pdf:hover { transform: scale(1.03); }
-        .analysis-select-bar .btn-dl-pdf:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-        .analysis-select-bar .sel-nav-btn {
-            padding: 3px 8px; font-size: 0.82rem; font-weight: 600;
-            border: 1.5px solid var(--border); color: var(--muted); background: rgba(255,255,255,0.5);
-            border-radius: 5px; cursor: pointer; line-height: 1;
-        }
-        .analysis-select-bar .sel-nav-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .analysis-select-bar .btn-dl-pdf { padding: 5px 12px; font-size: .78rem; font-weight: 600; background: var(--primary); color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+        .analysis-select-bar .btn-dl-pdf:disabled { opacity: .4; cursor: not-allowed; }
+        .analysis-select-bar .sel-nav-btn { padding: 3px 8px; font-size: .82rem; border: 1px solid var(--border-2); color: var(--muted); background: #fff; border-radius: 5px; cursor: pointer; line-height: 1; }
         .analysis-select-bar label { cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; }
         .analysis-msg-wrapper { display: flex; align-items: flex-start; gap: 8px; }
         .analysis-msg-wrapper.user { justify-content: flex-end; }
-        .analysis-msg-cb {
-            display: none; margin-top: 10px; flex-shrink: 0; width: 16px; height: 16px;
-            accent-color: var(--primary); cursor: pointer;
-        }
+        .analysis-msg-cb { display: none; margin-top: 10px; flex-shrink: 0; width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
         .select-mode-active .analysis-msg-cb { display: block; }
 
-        /* ── Charts ── */
-        .chart-container {
-            background: rgba(255,255,255,0.45); backdrop-filter: blur(12px);
-            border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
-            padding: 16px; margin: 10px 0; overflow: hidden;
-        }
-        .chart-title { text-align: center; font-weight: 600; font-size: 0.82rem; margin-bottom: 8px; color: var(--text); }
+        /* Charts */
+        .chart-container { background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin: 10px 0; overflow: hidden; }
+        .chart-title { text-align: center; font-weight: 600; font-size: .82rem; margin-bottom: 8px; }
         .chart-container canvas { max-height: 280px; width: 100% !important; }
         .chart-placeholder { white-space: normal; }
-        .chart-table { border-collapse: collapse; width: 100%; font-size: 0.82rem; margin: 0; }
-        .chart-table th { background: rgba(99,102,241,0.1); font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid rgba(0,0,0,0.08); }
-        .chart-table td { padding: 6px 10px; text-align: left; border: 1px solid rgba(0,0,0,0.08); }
-        .chart-table tr:hover td { background: rgba(99,102,241,0.04); }
+        .chart-table { border-collapse: collapse; width: 100%; font-size: .82rem; margin: 0; }
+        .chart-table th { background: var(--primary-soft); font-weight: 600; padding: 6px 10px; text-align: left; border: 1px solid var(--border); }
+        .chart-table td { padding: 6px 10px; text-align: left; border: 1px solid var(--border); }
 
-        /* ── Modal ── */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.3); backdrop-filter: blur(4px);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 100; padding: 16px;
-        }
-        .modal {
-            background: var(--glass-strong); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
-            border: 1px solid var(--glass-border); border-radius: var(--radius);
-            padding: 32px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
-        }
-        .modal h2 { margin-bottom: 20px; font-size: 1.15rem; }
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+        .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; width: 100%; max-width: 620px; max-height: 92vh; overflow-y: auto; box-shadow: var(--shadow); }
+        .modal.wide { max-width: 820px; }
+        .modal h2 { margin-bottom: 16px; font-size: 1.15rem; }
+        .modal-foot { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
+        .modal-foot .right { margin-left: auto; display: flex; gap: 10px; }
+
+        /* Wizard stepper */
+        .stepper { display: flex; gap: 6px; margin-bottom: 20px; }
+        .step { flex: 1; text-align: center; font-size: .74rem; color: var(--muted); padding-top: 8px; border-top: 3px solid var(--border); cursor: pointer; }
+        .step.active { color: var(--primary); border-top-color: var(--primary); font-weight: 600; }
+        .step.done { border-top-color: #93c5fd; }
+        .wstep { display: none; }
+        .wstep.active { display: block; }
+        .ai-box { background: linear-gradient(135deg, #eef2ff, #f5f3ff); border: 1px solid #c7d2fe; border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 16px; }
+        .ai-box .ai-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem; margin-bottom: 6px; }
+        .ai-box .ai-desc { font-size: .8rem; color: var(--text-2); margin-bottom: 12px; }
+        .ai-box .form-group { margin-bottom: 10px; }
+        .preview-img { max-width: 100%; border-radius: 10px; border: 1px solid var(--border); margin-top: 10px; display: block; }
+        .file-drop { border: 1px dashed var(--border-2); border-radius: var(--radius-sm); padding: 14px; text-align: center; font-size: .84rem; color: var(--muted); background: #fff; }
+        .file-drop input { display: block; margin: 8px auto 0; font-size: .82rem; }
+        .kv { font-size: .8rem; color: var(--muted); }
+        .kv b { color: var(--text-2); }
+        details.adv summary { cursor: pointer; font-size: .86rem; font-weight: 600; color: var(--text-2); margin-bottom: 10px; }
 
         @media (max-width: 600px) {
-            .stats-bar { gap: 10px; }
-            .stat-box { min-width: 80px; padding: 12px; }
-            .topbar { padding: 12px 16px; }
-            .main { padding: 20px 12px; }
+            .topbar { padding: 0 14px; }
+            .main { padding: 18px 12px; }
+            .modal { padding: 20px; }
+            .stat-box { min-width: 100px; padding: 12px 14px; }
         }
     </style>
 </head>
 <body>
-<div class="orb orb-1"></div>
-<div class="orb orb-2"></div>
 
 <!-- AUTH SCREEN -->
 <div id="auth-screen" class="auth-wrapper">
     <div class="auth-card">
-        <h1>Survey Admin</h1>
-        <p class="sub">Sign in to manage your surveys</p>
+        <div class="brand-mark">S</div>
+        <h1>Survey Studio</h1>
+        <p class="sub">Sign in to design conversations and analyse responses</p>
         <div id="login-form">
-            <div class="form-group">
-                <label>Username</label>
-                <input id="auth-user" placeholder="admin">
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input id="auth-pass" type="password" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;"
-                       onkeydown="if(event.key==='Enter')doLogin()">
-            </div>
-            <button class="btn" style="width:100%;margin-top:8px" onclick="doLogin()">Sign In</button>
+            <div class="form-group"><label>Username</label><input id="auth-user" placeholder="admin" autocomplete="username"></div>
+            <div class="form-group"><label>Password</label><input id="auth-pass" type="password" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+            <button class="btn" style="width:100%;margin-top:6px" onclick="doLogin()">Sign In</button>
             <div class="error" id="auth-error"></div>
-            <p style="margin-top:16px">
-                <button class="link-btn" onclick="toggleAuthMode()">Create an account</button>
-            </p>
-            <p style="margin-top:8px">
-                <a class="link-btn" href="/register" style="font-size:0.82rem">Have an invite code? Register as teacher</a>
-            </p>
+            <p style="margin-top:16px"><button class="link-btn" onclick="toggleAuthMode()">Create an account</button></p>
+            <p style="margin-top:8px"><a class="link-btn" href="/register" style="font-size:.82rem">Have an invite code? Register as teacher</a></p>
         </div>
     </div>
 </div>
@@ -358,9 +266,9 @@
 <!-- DASHBOARD -->
 <div id="dashboard" class="hidden">
     <div class="topbar">
-        <h1><a href="javascript:void(0)" onclick="showList()" style="color:inherit;text-decoration:none;cursor:pointer">Survey Admin</a></h1>
+        <div class="brand" onclick="showList()"><div class="mark">S</div><span>Survey Studio</span></div>
         <div class="user-info">
-            <span id="admin-name" style="font-size:0.88rem;color:var(--muted)"></span>
+            <span id="admin-name" style="font-size:.86rem;color:var(--muted)"></span>
             <button class="btn btn-sm btn-outline" onclick="openSettingsModal()">Settings</button>
             <button class="btn btn-sm btn-outline" onclick="doLogout()">Sign Out</button>
         </div>
@@ -369,37 +277,35 @@
     <div class="main">
         <!-- Survey List -->
         <div id="list-view">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-                <h2>Your Surveys</h2>
+            <div class="page-head">
+                <div><h2>Your Surveys</h2><div class="kv">Conversational surveys, reflections and formative checks for your classes.</div></div>
                 <div style="display:flex;gap:8px">
                     <button class="btn btn-outline admin-only" onclick="openTeachersModal()">Teachers</button>
                     <button class="btn" onclick="openCreateModal()">+ New Survey</button>
                 </div>
             </div>
             <div class="survey-grid" id="survey-grid"></div>
-            <p id="no-surveys" class="hidden" style="text-align:center;color:var(--muted);padding:40px">
-                No surveys yet. Create your first one!
-            </p>
+            <p id="no-surveys" class="hidden" style="text-align:center;color:var(--muted);padding:40px">No surveys yet. Create your first one with the AI-assisted wizard.</p>
         </div>
 
         <!-- Survey Detail -->
         <div id="detail-view" class="hidden">
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-                <button type="button" class="btn btn-outline btn-sm" onclick="showList()">&larr; Back</button>
-            </div>
+            <div style="margin-bottom:14px"><button type="button" class="btn btn-outline btn-sm" onclick="showList()">&larr; All surveys</button></div>
             <div class="detail-header">
                 <h2 id="detail-title"></h2>
                 <span id="detail-badge"></span>
-                <span id="detail-code" style="font-family:monospace;font-size:1.05rem;font-weight:700;color:var(--primary)"></span>
-                <button class="btn btn-sm btn-outline" id="copy-link-btn" onclick="copySurveyLink()" style="font-size:0.78rem;padding:4px 12px">Copy Link</button>
+                <span class="detail-code" id="detail-code"></span>
+                <button class="btn btn-sm btn-outline" id="copy-link-btn" onclick="copySurveyLink()">Copy participant link</button>
             </div>
             <div class="stats-bar" id="detail-stats"></div>
-
-            <div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <button class="btn btn-sm btn-danger" id="close-btn" onclick="closeSurvey()">Close Survey</button>
-                <button class="btn btn-sm btn-success hidden" id="reopen-btn" onclick="reopenSurvey()">Reopen</button>
+            <div class="toolbar">
+                <button class="btn btn-sm" onclick="openReport('html')">Report (print / PDF)</button>
+                <button class="btn btn-sm btn-outline" onclick="openReport('docx')">Download Word report</button>
                 <button class="btn btn-sm btn-outline" onclick="refreshDetail()">Refresh</button>
-                <button class="btn btn-sm btn-danger" id="delete-btn" onclick="deleteSurvey()" style="margin-left:auto">Delete Survey</button>
+                <span style="flex:1"></span>
+                <button class="btn btn-sm btn-danger btn-outline" id="close-btn" onclick="closeSurvey()">Close survey</button>
+                <button class="btn btn-sm btn-success hidden" id="reopen-btn" onclick="reopenSurvey()">Reopen</button>
+                <button class="btn btn-sm btn-danger btn-outline" id="delete-btn" onclick="deleteSurvey()">Delete</button>
             </div>
 
             <div class="tabs">
@@ -407,7 +313,7 @@
                 <button class="tab" onclick="switchTab('participants',this)">Participants</button>
                 <button class="tab" onclick="switchTab('conversation',this)">Conversations</button>
                 <button class="tab" onclick="switchTab('analysis',this)">Analysis Chat</button>
-                <button class="tab" onclick="switchTab('settings',this)">Setup Survey</button>
+                <button class="tab" onclick="switchTab('settings',this)">Setup</button>
             </div>
 
             <!-- Insights Tab -->
@@ -415,32 +321,18 @@
                 <div id="insights-loading" style="text-align:center;padding:40px;color:var(--muted)">Loading insights...</div>
                 <div id="insights-content" class="hidden">
                     <div class="insights-grid">
-                        <div class="glass-card">
-                            <h3>Sentiment Overview</h3>
-                            <div id="sentiment-chart"></div>
-                        </div>
-                        <div class="glass-card">
-                            <h3>Top Themes</h3>
-                            <div id="themes-list"></div>
-                        </div>
+                        <div class="card"><h3>Sentiment overview</h3><div id="sentiment-chart"></div></div>
+                        <div class="card"><h3>Top themes</h3><div id="themes-list"></div></div>
                     </div>
-                    <div class="glass-card" style="margin-top:16px">
-                        <h3>Engagement Distribution</h3>
-                        <div id="engagement-chart"></div>
-                    </div>
-                    <div class="glass-card" style="margin-top:16px">
+                    <div class="card" style="margin-top:16px"><h3>Engagement distribution</h3><div id="engagement-chart"></div></div>
+                    <div class="card" style="margin-top:16px">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-                            <h3 style="margin-bottom:0">Participant Details</h3>
+                            <h3 style="margin-bottom:0">Participant details</h3>
                             <button class="btn btn-sm btn-outline" onclick="regenerateInsights()">Regenerate</button>
                         </div>
                         <div style="overflow-x:auto">
                             <table class="participant-table" id="insights-table">
-                                <thead><tr>
-                                    <th onclick="sortInsightsTable('id')">ID</th>
-                                    <th onclick="sortInsightsTable('sentiment')">Sentiment</th>
-                                    <th onclick="sortInsightsTable('engagement')">Engagement</th>
-                                    <th>Themes</th>
-                                </tr></thead>
+                                <thead><tr><th onclick="sortInsightsTable('id')">ID</th><th onclick="sortInsightsTable('sentiment')">Sentiment</th><th onclick="sortInsightsTable('engagement')">Engagement</th><th>Themes</th></tr></thead>
                                 <tbody id="insights-tbody"></tbody>
                             </table>
                         </div>
@@ -450,13 +342,13 @@
 
             <!-- Participants Tab -->
             <div class="tab-content" id="tab-participants">
-                <div id="bulk-actions" style="display:none;margin-bottom:12px;align-items:center;gap:12px">
-                    <span id="selected-count" style="font-size:0.85rem;color:var(--muted)">0 selected</span>
-                    <button class="btn btn-danger btn-sm" onclick="bulkDeleteParticipants()">Delete Selected</button>
-                    <button class="btn btn-sm" onclick="downloadSelectedCSV()" style="background:var(--primary);color:#fff">Download CSV</button>
-                    <button class="btn btn-sm" onclick="downloadSelectedPDF()" style="background:var(--primary);color:#fff">Download PDF</button>
+                <div id="bulk-actions" style="display:none;margin-bottom:12px;align-items:center;gap:10px;flex-wrap:wrap">
+                    <span id="selected-count" style="font-size:.85rem;color:var(--muted)">0 selected</span>
+                    <button class="btn btn-danger btn-outline btn-sm" onclick="bulkDeleteParticipants()">Delete selected</button>
+                    <button class="btn btn-sm btn-outline" onclick="downloadSelectedCSV()">Download CSV</button>
+                    <button class="btn btn-sm btn-outline" onclick="downloadSelectedPDF()">Print selected</button>
                 </div>
-                <div style="overflow-x:auto">
+                <div class="card" style="padding:0;overflow-x:auto">
                     <table class="participant-table">
                         <thead><tr><th style="width:36px"><input type="checkbox" id="select-all-participants" onchange="toggleAllParticipants(this.checked)"></th><th>ID</th><th>Status</th><th>Messages</th><th>Duration</th><th>Name</th><th>Email</th><th>Phone</th><th>Started</th><th></th></tr></thead>
                         <tbody id="participant-tbody"></tbody>
@@ -466,241 +358,171 @@
 
             <!-- Conversations Tab -->
             <div class="tab-content" id="tab-conversation">
-                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-                    <p style="color:var(--muted);font-size:0.88rem;margin:0">Select a participant:</p>
-                    <button class="btn btn-sm" onclick="downloadConversations()" style="margin-left:auto">Download All (TXT)</button>
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+                    <select id="convo-select" onchange="showConversation(this.value)" style="padding:8px 12px;border:1px solid var(--border-2);border-radius:8px;font-size:.88rem;background:#fff;min-width:240px"></select>
+                    <button class="btn btn-sm btn-outline" onclick="downloadConversations()" style="margin-left:auto">Download all (TXT)</button>
                 </div>
-                <select id="convo-select" onchange="showConversation(this.value)" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;margin-bottom:16px;font-size:0.88rem;background:rgba(255,255,255,0.5)"></select>
-                <div class="convo-viewer" id="convo-viewer"></div>
+                <div class="convo-viewer" id="convo-viewer"><span class="kv">Select a participant to view the transcript, including generated images.</span></div>
             </div>
 
             <!-- Analysis Chat Tab -->
             <div class="tab-content" id="tab-analysis">
-                <p style="color:var(--muted);margin-bottom:12px;font-size:0.85rem">
-                    Chat with AI to analyze survey responses. Ask about themes, sentiment, insights.
-                </p>
+                <p style="color:var(--muted);margin-bottom:12px;font-size:.85rem">Ask questions about the responses. The assistant can produce charts and tables you can export.</p>
                 <div class="analysis-chat" id="analysis-chat-container">
                     <div class="analysis-toolbar">
-                        <button class="btn-select-toggle" onclick="toggleAnalysisSelect()">Select for Report</button>
+                        <button class="btn-select-toggle" onclick="toggleAnalysisSelect()">Select for report</button>
                         <div class="analysis-select-bar" id="analysis-select-bar">
                             <label><input type="checkbox" id="analysis-select-all" onchange="toggleSelectAll(this.checked)"> All</label>
                             <span id="analysis-select-count">0 selected</span>
-                            <button class="sel-nav-btn" onclick="navAnalysisMsg(-1)" title="Previous message">&#9650;</button>
-                            <button class="sel-nav-btn" onclick="navAnalysisMsg(1)" title="Next message">&#9660;</button>
+                            <button class="sel-nav-btn" onclick="navAnalysisMsg(-1)" title="Previous">&#9650;</button>
+                            <button class="sel-nav-btn" onclick="navAnalysisMsg(1)" title="Next">&#9660;</button>
                             <button class="btn-dl-pdf" id="analysis-dl-pdf" onclick="downloadAnalysisPDF()" disabled>Download PDF</button>
                             <button class="btn-dl-pdf" id="analysis-del-btn" onclick="deleteAnalysisMessages()" disabled style="background:var(--danger)">Delete</button>
                         </div>
                     </div>
                     <div class="analysis-messages" id="analysis-messages"></div>
                     <div class="analysis-input-area">
-                        <input id="analysis-input" placeholder="Ask about survey results..."
-                               onkeydown="if(event.key==='Enter')sendAnalysis()">
+                        <input id="analysis-input" placeholder="e.g. Which misconceptions came up most often?" onkeydown="if(event.key==='Enter')sendAnalysis()">
                         <button class="btn btn-sm" id="analysis-send" onclick="sendAnalysis()">Send</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Settings / Setup Survey Tab -->
+            <!-- Setup Tab -->
             <div class="tab-content" id="tab-settings">
-                <div class="glass-card">
-                    <h3>Setup Survey</h3>
-
-                    <!-- Legacy prompt for surveys created before wizard -->
-                    <div id="edit-legacy-prompt-section" class="wizard-step hidden">
-                        <div class="wizard-step-header">
-                            <div class="wizard-step-number">!</div>
-                            <div class="wizard-step-title">Existing System Prompt</div>
-                        </div>
-                        <p style="font-size:0.82rem;color:var(--muted);margin-bottom:12px">This survey was created with a raw system prompt. You can edit it below, or fill in the wizard fields above to switch to the new format.</p>
-                        <div class="form-group">
-                            <label>System Prompt</label>
-                            <textarea id="edit-prompt" rows="6"></textarea>
-                        </div>
+                <div class="card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+                        <h3 style="margin:0">Survey setup</h3>
+                        <span class="kv">Changes apply to new conversations immediately.</span>
                     </div>
-
-                    <div class="wizard-step">
-                        <div class="wizard-step-header">
-                            <div class="wizard-step-number">1</div>
-                            <div class="wizard-step-title">Survey Type &amp; Topic</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Survey Type</label>
-                            <select id="edit-survey-type" onchange="onSurveyTypeChange('edit')">
-                                <option value="">Select a type...</option>
-                                <option value="general_sensing">General Sensing</option>
-                                <option value="categorising">Categorising</option>
-                                <option value="depth_survey">Depth Survey</option>
-                            </select>
-                        </div>
-                        <div class="type-desc" id="edit-type-desc"></div>
-                        <div class="form-group">
-                            <label>Title</label>
-                            <input id="edit-title">
-                        </div>
-                        <div class="form-group">
-                            <label>Topic</label>
-                            <input id="edit-topic">
-                        </div>
+                    <div id="edit-legacy-prompt-section" class="section hidden">
+                        <div class="section-head"><div class="section-num">!</div><div class="section-title">Existing system prompt</div></div>
+                        <p class="kv" style="margin-bottom:10px">This survey was created with a raw system prompt. Edit it below, or fill in the guided fields to switch formats.</p>
+                        <div class="form-group"><label>System prompt</label><textarea id="edit-prompt" rows="6"></textarea></div>
                     </div>
-
-                    <div class="wizard-step">
-                        <div class="wizard-step-header">
-                            <div class="wizard-step-number">2</div>
-                            <div class="wizard-step-title">Questions &amp; Instructions</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Questions <span style="font-weight:400;color:var(--muted)">(what to ask participants)</span></label>
-                            <textarea id="edit-questions" rows="6" placeholder="1. &#10;2. &#10;3. "></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Instructions <span style="font-weight:400;color:var(--muted)">(how the bot should behave)</span></label>
-                            <textarea id="edit-instructions" rows="4" placeholder="Ask each question, briefly follow up..."></textarea>
-                        </div>
+                    <div id="edit-form"></div>
+                    <div style="display:flex;gap:10px;align-items:center">
+                        <button class="btn" onclick="saveSettings()">Save changes</button>
+                        <span class="kv" id="edit-save-status"></span>
                     </div>
-
-                    <div class="wizard-step">
-                        <div class="wizard-step-header">
-                            <div class="wizard-step-number">3</div>
-                            <div class="wizard-step-title">Facilitator &amp; Settings</div>
-                        </div>
-                        <div class="form-group">
-                            <label>Facilitator intro <span style="font-weight:400;color:var(--muted)">(your name &amp; intro)</span></label>
-                            <textarea id="edit-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
-                        </div>
-                        <div class="form-group">
-                            <label>Max Messages per Participant</label>
-                            <input id="edit-max" type="number" min="1" max="100">
-                        </div>
-                        <div class="form-group">
-                            <label>Collect Contact Info <span style="font-weight:400;color:var(--muted)">(shown before survey starts)</span></label>
-                            <div style="display:flex;gap:16px;margin-top:6px">
-                                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-name"> Name</label>
-                                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-email"> Email</label>
-                                <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="edit-collect-phone"> Phone</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <button class="btn" onclick="saveSettings()">Save Changes</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- CREATE MODAL -->
+<!-- CREATE WIZARD -->
 <div id="create-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeCreateModal()">
-    <div class="modal">
-        <h2>Create New Survey</h2>
-
-        <div class="wizard-step">
-            <div class="wizard-step-header">
-                <div class="wizard-step-number">1</div>
-                <div class="wizard-step-title">Survey Type &amp; Topic</div>
-            </div>
-            <div class="form-group">
-                <label>Survey Type</label>
-                <select id="new-survey-type" onchange="onSurveyTypeChange('new')">
-                    <option value="">Select a type...</option>
-                    <option value="general_sensing">General Sensing</option>
-                    <option value="categorising">Categorising</option>
-                    <option value="depth_survey">Depth Survey</option>
-                </select>
-            </div>
-            <div class="type-desc" id="new-type-desc"></div>
-            <div class="form-group">
-                <label>Title</label>
-                <input id="new-title" placeholder="Customer Satisfaction Survey">
-            </div>
-            <div class="form-group">
-                <label>Topic</label>
-                <input id="new-topic" placeholder="Gather feedback on our product experience">
-            </div>
+    <div class="modal wide">
+        <h2>New survey</h2>
+        <div class="stepper" id="wizard-stepper">
+            <div class="step active" onclick="gotoStep(1)">1 · Describe</div>
+            <div class="step" onclick="gotoStep(2)">2 · Conversation</div>
+            <div class="step" onclick="gotoStep(3)">3 · Briefing</div>
+            <div class="step" onclick="gotoStep(4)">4 · Visuals</div>
+            <div class="step" onclick="gotoStep(5)">5 · Publish</div>
         </div>
 
-        <div class="wizard-step">
-            <div class="wizard-step-header">
-                <div class="wizard-step-number">2</div>
-                <div class="wizard-step-title">Questions &amp; Instructions</div>
-            </div>
-            <div class="form-group">
-                <label>Questions <span style="font-weight:400;color:var(--muted)">(what to ask participants)</span></label>
-                <textarea id="new-questions" rows="6" placeholder="1. &#10;2. &#10;3. "></textarea>
-            </div>
-            <div class="form-group">
-                <label>Instructions <span style="font-weight:400;color:var(--muted)">(how the bot should behave)</span></label>
-                <textarea id="new-instructions" rows="4" placeholder="Ask each question, briefly follow up..."></textarea>
-            </div>
-        </div>
-
-        <div class="wizard-step">
-            <div class="wizard-step-header">
-                <div class="wizard-step-number">3</div>
-                <div class="wizard-step-title">Facilitator &amp; Settings</div>
-            </div>
-            <div class="form-group">
-                <label>Facilitator intro <span style="font-weight:400;color:var(--muted)">(your name &amp; intro)</span></label>
-                <textarea id="new-facilitator-intro" rows="3" placeholder="My name is..."></textarea>
-            </div>
-            <div class="form-group">
-                <label>Survey Code <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-                <input id="new-code" placeholder="MYCODE" maxlength="10" style="text-transform:uppercase">
-            </div>
-            <div class="form-group">
-                <label>Max Messages per Participant</label>
-                <input id="new-max" type="number" value="20" min="1" max="100">
-            </div>
-            <div class="form-group">
-                <label>Collect Contact Info <span style="font-weight:400;color:var(--muted)">(shown before survey starts)</span></label>
-                <div style="display:flex;gap:16px;margin-top:6px">
-                    <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-name"> Name</label>
-                    <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-email"> Email</label>
-                    <label style="font-size:0.88rem;font-weight:400;display:flex;align-items:center;gap:4px"><input type="checkbox" id="new-collect-phone"> Phone</label>
+        <!-- Step 1: Describe -->
+        <div class="wstep active" id="wstep-1">
+            <div class="ai-box">
+                <div class="ai-head">✦ Let the assistant draft your survey</div>
+                <div class="ai-desc">Describe what you want to find out in plain language. The assistant will propose a title, questions, facilitator behaviour, a student briefing and an illustration style. You can edit everything afterwards.</div>
+                <div class="form-group"><label>What do you want the chatbot to find out?</label><textarea id="wz-goal" rows="4" placeholder="e.g. Check whether my Sec 2 students understood the causes of World War I after today's lesson, and find out which parts they found confusing."></textarea></div>
+                <div class="form-row">
+                    <div class="form-group"><label>Audience</label><input id="wz-audience" placeholder="e.g. Secondary 2 students, 14 years old"></div>
+                    <div class="form-group"><label>Survey type</label>
+                        <select id="wz-type">
+                            <option value="">Let the assistant choose</option>
+                            <option value="formative_assessment">Formative assessment (check understanding)</option>
+                            <option value="reflection">Reflection after a task</option>
+                            <option value="depth_survey">Depth survey (explore views)</option>
+                            <option value="general_sensing">General sensing (quick pulse)</option>
+                            <option value="categorising">Categorising (sort into groups)</option>
+                        </select>
+                    </div>
                 </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Number of questions</label><input id="wz-num" type="number" min="2" max="15" value="5"></div>
+                    <div class="form-group"><label>Tone <span>(optional)</span></label><input id="wz-tone" placeholder="e.g. friendly and encouraging"></div>
+                </div>
+                <div class="form-group"><label>Anything else? <span>(optional)</span></label><input id="wz-extra" placeholder="e.g. Refer to the lesson video; do not give away answers"></div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-ai" id="wz-generate-btn" onclick="wizardGenerate()">✦ Draft with AI</button>
+                    <button class="btn btn-outline" onclick="gotoStep(2)">Skip — I'll write it myself</button>
+                    <span class="kv" id="wz-status"></span>
+                </div>
+                <div class="error" id="wz-error"></div>
             </div>
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:20px">
-            <button class="btn" onclick="createSurvey()">Create Survey</button>
+        <!-- Steps 2-5 are rendered by buildSurveyForm('new') -->
+        <div id="new-form"></div>
+
+        <div class="modal-foot">
             <button class="btn btn-outline" onclick="closeCreateModal()">Cancel</button>
+            <div class="right">
+                <button class="btn btn-outline" id="wz-back" onclick="gotoStep(wizardStep-1)">Back</button>
+                <button class="btn" id="wz-next" onclick="gotoStep(wizardStep+1)">Next</button>
+                <button class="btn hidden" id="wz-create" onclick="createSurvey()">Create survey</button>
+            </div>
         </div>
         <div class="error" id="create-error"></div>
     </div>
 </div>
 
-<!-- TEACHERS MODAL (admin only) -->
+<!-- TEACHERS MODAL -->
 <div id="teachers-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeTeachersModal()">
     <div class="modal">
-        <h2>Teacher Management</h2>
-        <div style="display:flex;gap:10px;margin-bottom:20px">
-            <button class="btn" onclick="generateInvite()">Generate Invite Link</button>
+        <h2>Teacher management</h2>
+        <div style="display:flex;gap:10px;margin-bottom:16px"><button class="btn" onclick="generateInvite()">Generate invite link</button></div>
+        <div id="invite-link-box" class="hidden" style="margin-bottom:16px;padding:14px;background:var(--primary-soft);border-radius:var(--radius-sm);word-break:break-all">
+            <div style="font-size:.82rem;font-weight:600;margin-bottom:6px">Share this link with a teacher:</div>
+            <div id="invite-link-text" style="font-family:ui-monospace,monospace;font-size:.85rem;color:var(--primary-ink)"></div>
+            <button class="btn btn-sm" style="margin-top:8px" onclick="copyInviteLink()">Copy link</button>
         </div>
-        <div id="invite-link-box" class="hidden" style="margin-bottom:20px;padding:16px;background:rgba(99,102,241,0.08);border-radius:var(--radius-sm);word-break:break-all">
-            <div style="font-size:0.82rem;font-weight:600;margin-bottom:6px">Share this link with a teacher:</div>
-            <div id="invite-link-text" style="font-family:monospace;font-size:0.88rem;color:var(--primary)"></div>
-            <button class="btn btn-sm" style="margin-top:8px" onclick="copyInviteLink()">Copy Link</button>
-        </div>
-        <div id="teachers-list" style="margin-top:16px">
-            <p style="color:var(--muted);font-size:0.88rem">Loading teachers...</p>
-        </div>
-        <div style="margin-top:20px">
-            <button class="btn btn-outline" onclick="closeTeachersModal()">Close</button>
-        </div>
+        <div id="teachers-list"><p class="kv">Loading teachers...</p></div>
+        <div class="modal-foot"><button class="btn btn-outline" onclick="closeTeachersModal()">Close</button></div>
     </div>
 </div>
 
 <!-- SETTINGS MODAL -->
 <div id="settings-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeSettingsModal()">
     <div class="modal">
-        <h2>Account Settings</h2>
-        <div class="form-group">
-            <label>Anthropic API Key</label>
-            <input id="settings-api-key" type="password" placeholder="sk-ant-...">
-            <div style="font-size:0.78rem;color:var(--muted);margin-top:4px" id="settings-api-status"></div>
+        <h2>Account settings</h2>
+        <div class="section">
+            <div class="section-head"><div class="section-num">1</div><div class="section-title">Chat model provider</div></div>
+            <div class="form-group"><label>Provider</label>
+                <select id="st-provider" onchange="onSettingsProviderChange()">
+                    <option value="">System default</option>
+                    <option value="anthropic">Claude (Anthropic)</option>
+                    <option value="openrouter">OpenRouter (any model)</option>
+                </select>
+                <div class="help" id="st-provider-help"></div>
+            </div>
+            <div class="form-group"><label>Model <span>(leave blank for the default)</span></label>
+                <input id="st-model" list="st-model-list" placeholder="e.g. claude-haiku-4-5 or openai/gpt-4o-mini">
+                <datalist id="st-model-list"></datalist>
+                <div class="help" id="st-model-help"></div>
+            </div>
+            <div class="form-group"><label>Anthropic API key</label><input id="st-anthropic-key" type="password" placeholder="sk-ant-…" autocomplete="off"><div class="help" id="st-anthropic-status"></div></div>
+            <div class="form-group"><label>OpenRouter API key</label><input id="st-openrouter-key" type="password" placeholder="sk-or-…" autocomplete="off"><div class="help" id="st-openrouter-status"></div></div>
         </div>
-        <div style="display:flex;gap:10px;margin-top:20px">
-            <button class="btn" onclick="saveApiKey()">Save</button>
+        <div class="section">
+            <div class="section-head"><div class="section-num">2</div><div class="section-title">Default image generation</div><span class="section-sub">Used by surveys that don't set their own</span></div>
+            <div class="form-group"><label>Image provider</label>
+                <select id="st-image-provider" onchange="onSettingsImageProviderChange()"></select>
+                <div class="help" id="st-image-help"></div>
+            </div>
+            <div class="form-group"><label>Image model <span>(optional)</span></label><input id="st-image-model" list="st-image-model-list" placeholder="provider default"><datalist id="st-image-model-list"></datalist></div>
+            <div class="form-group hidden" id="st-image-base-wrap"><label>Base URL <span>(OpenAI-compatible endpoints only)</span></label><input id="st-image-base" placeholder="https://api.openai.com/v1"></div>
+            <div class="form-group" id="st-image-key-wrap"><label>Image API key</label><input id="st-image-key" type="password" placeholder="leave blank to keep / reuse chat key" autocomplete="off"><div class="help" id="st-image-key-status"></div></div>
+        </div>
+        <div class="kv" id="st-effective" style="margin-bottom:6px"></div>
+        <div class="error" id="st-error"></div>
+        <div class="modal-foot">
             <button class="btn btn-outline" onclick="closeSettingsModal()">Cancel</button>
+            <div class="right"><button class="btn" onclick="saveAccountSettings()">Save settings</button></div>
         </div>
     </div>
 </div>
@@ -715,122 +537,447 @@ let currentInsights = null;
 let isRegister = false;
 let insightsSortCol = null;
 let insightsSortAsc = true;
+let wizardStep = 1;
+let pendingBriefingFile = { new: null, edit: null };
+let modelCache = {};
+let imageProviders = null;
+let accountSettings = null;
 
 const SURVEY_TYPE_CONFIG = {
-    general_sensing: {
-        description: "Quick pulse check. Ask a question, clarify briefly, move on.",
-        questionsTemplate: "1. \n2. \n3. ",
-        instructionsTemplate: "Ask each question, briefly follow up once for clarification, then move to the next.",
-    },
-    categorising: {
-        description: "Classify participants into groups with tailored responses at the end.",
-        questionsTemplate: "1. \n2. \n3. ",
-        instructionsTemplate: "Based on answers, classify into groups: [Group A], [Group B], [Group C]. At the end, provide a tailored response per group.",
-    },
-    depth_survey: {
-        description: "Reflective conversation to understand deeper perspectives.",
-        questionsTemplate: "1. \n2. \n3. ",
-        instructionsTemplate: "Take your time. Ask probing follow-ups, explore motivations, encourage deep reflection.",
-    },
+    general_sensing: { label: 'General sensing', description: 'Quick pulse check. Ask a question, clarify briefly, move on.', instructionsTemplate: 'Ask each question, briefly follow up once for clarification, then move to the next.' },
+    categorising: { label: 'Categorising', description: 'Classify participants into groups with tailored responses at the end.', instructionsTemplate: 'Based on answers, classify into groups: [Group A], [Group B], [Group C]. At the end, provide a tailored response per group.' },
+    depth_survey: { label: 'Depth survey', description: 'Reflective conversation to understand deeper perspectives.', instructionsTemplate: 'Take your time. Ask probing follow-ups, explore motivations, encourage deep reflection.' },
+    formative_assessment: { label: 'Formative assessment', description: 'Check understanding of a topic and surface misconceptions without giving away answers.', instructionsTemplate: 'Probe reasoning with why/how follow-ups. Never reveal the answer; give at most one hint, then move on. Stay encouraging.' },
+    reflection: { label: 'Reflection', description: 'Guide students to reflect on a task: what they did, learned, found hard, and would change.', instructionsTemplate: 'Use open questions. Give space to think. Help the student name one concrete thing to do differently next time.' },
 };
+const IMAGE_MODE_INFO = {
+    none: ['No visuals', 'Chat only. The visual panel stays hidden.'],
+    stock: ['Stock photos', 'Real photos from Unsplash when a visual helps. Needs the Unsplash key on the server.'],
+    generate: ['AI-generated illustrations', 'The chatbot creates an image for each question or scenario.'],
+};
+const BRIEFING_TYPES = [
+    ['none', 'No briefing', 'Start the conversation straight away.'],
+    ['link', 'Link to slides or video', 'YouTube, Vimeo, Google Slides, Canva, a PDF URL or any web page.'],
+    ['upload', 'Upload a file', 'PDF, PowerPoint, image or MP4 (max 25 MB), stored with the survey.'],
+];
 
-function onSurveyTypeChange(prefix) {
-    const sel = document.getElementById(prefix + '-survey-type');
-    const desc = document.getElementById(prefix + '-type-desc');
-    const questionsEl = document.getElementById(prefix + '-questions');
-    const instrEl = document.getElementById(prefix + '-instructions');
-    const config = SURVEY_TYPE_CONFIG[sel.value];
-    if (config) {
-        desc.textContent = config.description;
-        if (questionsEl && !questionsEl.value.trim()) questionsEl.value = config.questionsTemplate;
-        if (instrEl && !instrEl.value.trim()) instrEl.value = config.instructionsTemplate;
-    } else {
-        desc.textContent = '';
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function $(id) { return document.getElementById(id); }
+
+// ── Survey form (shared by create wizard and setup tab) ──
+function buildSurveyForm(p) {
+    const wrapStep = (n, html) => p === 'new' ? `<div class="wstep" id="wstep-${n}">${html}</div>` : html;
+    const typeOptions = Object.entries(SURVEY_TYPE_CONFIG).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+    const imageModeCards = Object.entries(IMAGE_MODE_INFO).map(([k, [t, d]]) =>
+        `<div class="radio-card" data-value="${k}" onclick="setImageMode('${p}','${k}')"><div class="rc-title">${t}</div><div class="rc-desc">${d}</div></div>`).join('');
+    const briefingCards = BRIEFING_TYPES.map(([k, t, d]) =>
+        `<div class="radio-card" data-value="${k}" onclick="setBriefingMode('${p}','${k}')"><div class="rc-title">${t}</div><div class="rc-desc">${d}</div></div>`).join('');
+    const refine = `
+        <div class="ai-box" style="margin-top:14px">
+            <div class="ai-head">✦ Refine with AI</div>
+            <div class="form-group"><textarea id="${p}-refine" rows="2" placeholder="e.g. Make the questions simpler; add one about group work; make the intro shorter"></textarea></div>
+            <div style="display:flex;gap:10px;align-items:center"><button class="btn btn-ai btn-sm" onclick="wizardRefine('${p}')">Apply feedback</button><span class="kv" id="${p}-refine-status"></span></div>
+        </div>`;
+    return wrapStep(2, `
+        <div class="section">
+            <div class="section-head"><div class="section-num">${p === 'new' ? 2 : 1}</div><div class="section-title">Conversation design</div></div>
+            <div class="form-row">
+                <div class="form-group"><label>Title</label><input id="${p}-title" placeholder="e.g. WWI causes — check-in"></div>
+                <div class="form-group"><label>Survey type</label><select id="${p}-survey-type" onchange="onSurveyTypeChange('${p}')"><option value="">Select a type…</option>${typeOptions}</select><div class="type-desc" id="${p}-type-desc"></div></div>
+            </div>
+            <div class="form-group"><label>Topic <span>(one sentence, shown to participants)</span></label><input id="${p}-topic" placeholder="What this conversation is about"></div>
+            <div class="form-group"><label>Questions <span>(what the facilitator must cover, one per line)</span></label><textarea id="${p}-questions" rows="7" placeholder="1. &#10;2. &#10;3. "></textarea></div>
+            <div class="form-group"><label>Facilitator instructions <span>(how the bot should behave)</span></label><textarea id="${p}-instructions" rows="4" placeholder="Pacing, follow-ups, what to do with weak answers, what not to do…"></textarea></div>
+            <div class="form-group"><label>Opening introduction <span>(said by the bot at the start)</span></label><textarea id="${p}-facilitator-intro" rows="2" placeholder="Hi! I'm your study buddy for today's lesson on…"></textarea></div>
+            ${refine}
+        </div>`) + wrapStep(3, `
+        <div class="section">
+            <div class="section-head"><div class="section-num">${p === 'new' ? 3 : 2}</div><div class="section-title">Briefing before the chat</div><span class="section-sub">Slides, a video or a document the student sees first</span></div>
+            <div class="radio-cards" id="${p}-briefing-cards" style="margin-bottom:14px">${briefingCards}</div>
+            <div id="${p}-briefing-link" class="hidden">
+                <div class="form-group"><label>Link</label><input id="${p}-briefing-url" placeholder="https://www.youtube.com/watch?v=… or https://docs.google.com/presentation/d/…"><div class="help">Google Slides: use File → Share → Publish to web, or make the deck viewable by anyone with the link. Office files must be publicly reachable.</div></div>
+            </div>
+            <div id="${p}-briefing-upload" class="hidden">
+                <div class="file-drop"><div id="${p}-briefing-file-status">Choose a PDF, PowerPoint, image or MP4 video.</div><input type="file" id="${p}-briefing-file" accept=".pdf,.pptx,.ppt,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm" onchange="onBriefingFileChange('${p}')"></div>
+                <div class="help" style="margin-top:6px">PowerPoint files are shown through Microsoft's online viewer; PDFs display natively. Convert PowerPoint to PDF for the most reliable display.</div>
+            </div>
+            <div class="form-group" style="margin-top:12px"><label>Briefing title <span>(optional)</span></label><input id="${p}-briefing-title" placeholder="e.g. Watch: the road to war (4 min)"></div>
+            <div class="form-group"><label>Task description <span>(shown next to the media, and given to the chatbot as context)</span></label><textarea id="${p}-briefing-text" rows="5" placeholder="Explain the task, why it matters and what the student should do."></textarea></div>
+        </div>`) + wrapStep(4, `
+        <div class="section">
+            <div class="section-head"><div class="section-num">${p === 'new' ? 4 : 3}</div><div class="section-title">Visuals while chatting</div></div>
+            <div class="radio-cards" id="${p}-image-cards" style="margin-bottom:14px">${imageModeCards}</div>
+            <div id="${p}-image-gen" class="hidden">
+                <div class="form-row">
+                    <div class="form-group"><label>Image provider</label><select id="${p}-image-provider" onchange="onImageProviderChange('${p}')"></select><div class="help" id="${p}-image-provider-help"></div></div>
+                    <div class="form-group"><label>Model <span>(optional)</span></label><input id="${p}-image-model" list="${p}-image-model-list" placeholder="provider default"><datalist id="${p}-image-model-list"></datalist></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group hidden" id="${p}-image-base-wrap"><label>Base URL <span>(OpenAI-compatible only)</span></label><input id="${p}-image-base" placeholder="https://api.openai.com/v1"></div>
+                    <div class="form-group" id="${p}-image-key-wrap"><label>API key <span>(optional — uses your account default)</span></label><input id="${p}-image-key" type="password" autocomplete="off" placeholder="leave blank to use account settings"><div class="help" id="${p}-image-key-status"></div></div>
+                </div>
+                <div class="form-group"><label>Illustration style</label><textarea id="${p}-image-style" rows="2" placeholder="e.g. clean flat vector illustration, bright friendly colours, no text"></textarea></div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-sm btn-outline" onclick="testImage('${p}')">Generate a test image</button>
+                    <span class="kv" id="${p}-image-test-status"></span>
+                </div>
+                <img id="${p}-image-preview" class="preview-img hidden" alt="Test image">
+            </div>
+        </div>`) + wrapStep(5, `
+        <div class="section">
+            <div class="section-head"><div class="section-num">${p === 'new' ? 5 : 4}</div><div class="section-title">Access &amp; limits</div></div>
+            <div class="form-row">
+                ${p === 'new' ? `<div class="form-group"><label>Access code <span>(optional, auto-generated if blank)</span></label><input id="new-code" placeholder="MYCLASS" maxlength="12" style="text-transform:uppercase"></div>` : ''}
+                <div class="form-group"><label>Max replies per participant</label><input id="${p}-max" type="number" value="20" min="1" max="200"><div class="help">The conversation wraps up after this many participant messages.</div></div>
+            </div>
+            <div class="form-group"><label>Collect participant details <span>(asked before the briefing)</span></label>
+                <div class="check-row">
+                    <label><input type="checkbox" id="${p}-collect-name"> Name</label>
+                    <label><input type="checkbox" id="${p}-collect-email"> Email</label>
+                    <label><input type="checkbox" id="${p}-collect-phone"> Phone</label>
+                </div>
+            </div>
+            <details class="adv"><summary>Advanced: use a different chat model for this survey</summary>
+                <div class="form-row">
+                    <div class="form-group"><label>Provider</label><select id="${p}-llm-provider" onchange="onLlmProviderChange('${p}')"><option value="">Account default</option><option value="anthropic">Claude (Anthropic)</option><option value="openrouter">OpenRouter</option></select></div>
+                    <div class="form-group"><label>Model <span>(optional)</span></label><input id="${p}-llm-model" list="${p}-llm-model-list" placeholder="provider default"><datalist id="${p}-llm-model-list"></datalist></div>
+                </div>
+                <div class="form-group"><label>API key for this survey <span>(optional)</span></label><input id="${p}-llm-key" type="password" autocomplete="off" placeholder="leave blank to use account key"><div class="help" id="${p}-llm-key-status"></div></div>
+            </details>
+        </div>`);
+}
+
+function setImageMode(p, mode) {
+    document.querySelectorAll(`#${p}-image-cards .radio-card`).forEach(c => c.classList.toggle('active', c.dataset.value === mode));
+    $(`${p}-image-gen`).classList.toggle('hidden', mode !== 'generate');
+    if (mode === 'generate') ensureImageProviderOptions(p);
+}
+function getImageMode(p) { const a = document.querySelector(`#${p}-image-cards .radio-card.active`); return a ? a.dataset.value : 'stock'; }
+
+function setBriefingMode(p, mode) {
+    document.querySelectorAll(`#${p}-briefing-cards .radio-card`).forEach(c => c.classList.toggle('active', c.dataset.value === mode));
+    $(`${p}-briefing-link`).classList.toggle('hidden', mode !== 'link');
+    $(`${p}-briefing-upload`).classList.toggle('hidden', mode !== 'upload');
+}
+function getBriefingMode(p) { const a = document.querySelector(`#${p}-briefing-cards .radio-card.active`); return a ? a.dataset.value : 'none'; }
+
+function onBriefingFileChange(p) {
+    const inp = $(`${p}-briefing-file`);
+    const f = inp.files && inp.files[0];
+    pendingBriefingFile[p] = f || null;
+    $(`${p}-briefing-file-status`).textContent = f ? `${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB) — uploads when you save` : 'Choose a PDF, PowerPoint, image or MP4 video.';
+}
+
+function onSurveyTypeChange(p) {
+    const sel = $(p + '-survey-type'), desc = $(p + '-type-desc'), instr = $(p + '-instructions');
+    const cfg = SURVEY_TYPE_CONFIG[sel.value];
+    desc.textContent = cfg ? cfg.description : '';
+    if (cfg && instr && !instr.value.trim()) instr.value = cfg.instructionsTemplate;
+}
+
+async function ensureImageProviders() {
+    if (imageProviders) return imageProviders;
+    const s = await loadAccountSettings();
+    imageProviders = s.image_providers;
+    return imageProviders;
+}
+async function ensureImageProviderOptions(p) {
+    const providers = await ensureImageProviders();
+    const sel = $(`${p}-image-provider`);
+    if (!sel.options.length) {
+        sel.innerHTML = Object.entries(providers).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+        const def = (accountSettings && accountSettings.effective.image_provider) || 'pollinations';
+        sel.value = def;
+        onImageProviderChange(p);
+    }
+}
+function onImageProviderChange(p) {
+    const sel = $(`${p}-image-provider`);
+    const info = imageProviders && imageProviders[sel.value];
+    $(`${p}-image-provider-help`).textContent = info ? info.help : '';
+    $(`${p}-image-base-wrap`).classList.toggle('hidden', sel.value !== 'openai');
+    $(`${p}-image-key-wrap`).classList.toggle('hidden', !!(info && !info.needs_key && sel.value === 'pollinations' && false));
+    $(`${p}-image-model`).placeholder = info ? `default: ${info.default_model}` : 'provider default';
+    if (sel.value === 'openrouter') fillDatalist(`${p}-image-model-list`, 'openrouter', 'image');
+    else $(`${p}-image-model-list`).innerHTML = '';
+}
+function onLlmProviderChange(p) {
+    const v = $(`${p}-llm-provider`).value;
+    if (v) fillDatalist(`${p}-llm-model-list`, v, 'chat'); else $(`${p}-llm-model-list`).innerHTML = '';
+}
+async function fillDatalist(listId, provider, kind) {
+    try {
+        if (!modelCache[provider]) modelCache[provider] = api(`/api/admin/models?provider=${provider}`);
+        const data = await modelCache[provider];
+        const list = (data[kind] || []).slice(0, 400);
+        $(listId).innerHTML = list.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+    } catch (e) { /* datalist is optional */ }
+}
+
+function readForm(p) {
+    const briefingMode = getBriefingMode(p);
+    const data = {
+        title: $(`${p}-title`).value.trim(),
+        topic: $(`${p}-topic`).value.trim(),
+        survey_type: $(`${p}-survey-type`).value || undefined,
+        questions: $(`${p}-questions`).value.trim() || undefined,
+        instructions: $(`${p}-instructions`).value.trim() || undefined,
+        facilitator_intro: $(`${p}-facilitator-intro`).value.trim() || null,
+        max_messages: parseInt($(`${p}-max`).value) || 20,
+        collect_name: $(`${p}-collect-name`).checked,
+        collect_email: $(`${p}-collect-email`).checked,
+        collect_phone: $(`${p}-collect-phone`).checked,
+        briefing_title: $(`${p}-briefing-title`).value.trim() || null,
+        briefing_text: $(`${p}-briefing-text`).value.trim() || null,
+        image_mode: getImageMode(p),
+        image_style: $(`${p}-image-style`).value.trim() || null,
+        llm_provider: $(`${p}-llm-provider`).value || null,
+        llm_model: $(`${p}-llm-model`).value.trim() || null,
+    };
+    if (briefingMode === 'link') {
+        data.briefing_url = $(`${p}-briefing-url`).value.trim() || null;
+        data.briefing_type = data.briefing_url ? 'link' : 'none';
+    } else if (briefingMode === 'none') {
+        data.briefing_type = 'none';
+        data.briefing_url = null;
+    } // upload: type/url are set by the upload endpoint
+    if (data.image_mode === 'generate') {
+        data.image_provider = $(`${p}-image-provider`).value || null;
+        data.image_model = $(`${p}-image-model`).value.trim() || null;
+        data.image_base_url = $(`${p}-image-base`).value.trim() || null;
+        const k = $(`${p}-image-key`).value;
+        if (k.trim()) data.image_api_key = k.trim();
+    }
+    const lk = $(`${p}-llm-key`).value;
+    if (lk.trim()) data.llm_api_key = lk.trim();
+    return data;
+}
+
+function fillForm(p, s) {
+    $(`${p}-title`).value = s.title || '';
+    $(`${p}-topic`).value = s.topic || '';
+    $(`${p}-survey-type`).value = s.survey_type || '';
+    $(`${p}-type-desc`).textContent = SURVEY_TYPE_CONFIG[s.survey_type] ? SURVEY_TYPE_CONFIG[s.survey_type].description : '';
+    $(`${p}-questions`).value = s.questions || '';
+    $(`${p}-instructions`).value = s.instructions || '';
+    $(`${p}-facilitator-intro`).value = s.facilitator_intro || '';
+    $(`${p}-max`).value = s.max_messages || 20;
+    $(`${p}-collect-name`).checked = !!s.collect_name;
+    $(`${p}-collect-email`).checked = !!s.collect_email;
+    $(`${p}-collect-phone`).checked = !!s.collect_phone;
+    $(`${p}-briefing-title`).value = s.briefing_title || '';
+    $(`${p}-briefing-text`).value = s.briefing_text || '';
+    const bt = s.briefing_type || 'none';
+    const isUpload = bt !== 'none' && (s.briefing_url || '').startsWith('/api/assets/');
+    setBriefingMode(p, bt === 'none' ? 'none' : isUpload ? 'upload' : 'link');
+    $(`${p}-briefing-url`).value = isUpload ? '' : (s.briefing_url || '');
+    $(`${p}-briefing-file-status`).innerHTML = isUpload ? `Current file: <a href="${esc(s.briefing_url)}" target="_blank">open</a> (${esc(bt)}). Choose another file to replace it.` : 'Choose a PDF, PowerPoint, image or MP4 video.';
+    pendingBriefingFile[p] = null;
+    setImageMode(p, s.image_mode || 'stock');
+    $(`${p}-image-style`).value = s.image_style || '';
+    if ((s.image_mode || 'stock') === 'generate') {
+        ensureImageProviderOptions(p).then(() => {
+            if (s.image_provider) { $(`${p}-image-provider`).value = s.image_provider; onImageProviderChange(p); }
+            $(`${p}-image-model`).value = s.image_model || '';
+            $(`${p}-image-base`).value = s.image_base_url || '';
+            $(`${p}-image-key`).value = '';
+            $(`${p}-image-key-status`).textContent = s.has_image_api_key ? 'A key is stored for this survey. Enter a new one to replace it.' : '';
+        });
+    }
+    $(`${p}-llm-provider`).value = s.llm_provider || '';
+    $(`${p}-llm-model`).value = s.llm_model || '';
+    $(`${p}-llm-key`).value = '';
+    $(`${p}-llm-key-status`).textContent = s.has_llm_api_key ? 'A key is stored for this survey. Enter a new one to replace it.' : '';
+    onLlmProviderChange(p);
+}
+
+function resetForm(p) {
+    fillForm(p, { max_messages: 20, image_mode: 'stock', briefing_type: 'none' });
+    if (p === 'new') { $('new-code').value = ''; }
+    ['refine'].forEach(k => { const e = $(`${p}-${k}`); if (e) e.value = ''; });
+    const prev = $(`${p}-image-preview`); if (prev) { prev.classList.add('hidden'); prev.src = ''; }
+}
+
+// ── Wizard ──
+function gotoStep(n) {
+    n = Math.max(1, Math.min(5, n));
+    if (n > 2 && !validateStep2(true)) { n = 2; }
+    wizardStep = n;
+    document.querySelectorAll('#create-modal .wstep').forEach(el => el.classList.toggle('active', el.id === `wstep-${n}`));
+    document.querySelectorAll('#wizard-stepper .step').forEach((el, i) => { el.classList.toggle('active', i + 1 === n); el.classList.toggle('done', i + 1 < n); });
+    $('wz-back').classList.toggle('hidden', n === 1);
+    $('wz-next').classList.toggle('hidden', n === 5);
+    $('wz-create').classList.toggle('hidden', n !== 5);
+    $('create-error').textContent = '';
+    if (n === 4) setImageMode('new', getImageMode('new'));
+}
+function validateStep2(show) {
+    const d = readForm('new');
+    let err = '';
+    if (!d.title || !d.topic) err = 'Title and topic are required';
+    else if (!d.survey_type) err = 'Please select a survey type';
+    else if (!d.questions) err = 'Please add at least one question';
+    if (err && show) $('create-error').textContent = err;
+    return !err;
+}
+function wizardBrief() {
+    return {
+        goal: $('wz-goal').value.trim(), audience: $('wz-audience').value.trim() || undefined,
+        survey_type: $('wz-type').value || undefined, num_questions: parseInt($('wz-num').value) || undefined,
+        tone: $('wz-tone').value.trim() || undefined, extra: $('wz-extra').value.trim() || undefined,
+    };
+}
+function applyDraft(p, d) {
+    if (d.title) $(`${p}-title`).value = d.title;
+    if (d.topic) $(`${p}-topic`).value = d.topic;
+    if (d.survey_type) { $(`${p}-survey-type`).value = d.survey_type; $(`${p}-type-desc`).textContent = SURVEY_TYPE_CONFIG[d.survey_type] ? SURVEY_TYPE_CONFIG[d.survey_type].description : ''; }
+    if (d.questions) $(`${p}-questions`).value = d.questions;
+    if (d.instructions) $(`${p}-instructions`).value = d.instructions;
+    if (d.facilitator_intro) $(`${p}-facilitator-intro`).value = d.facilitator_intro;
+    if (d.briefing_text) $(`${p}-briefing-text`).value = d.briefing_text;
+    if (d.image_style) $(`${p}-image-style`).value = d.image_style;
+    if (d.max_messages) $(`${p}-max`).value = d.max_messages;
+}
+async function wizardGenerate() {
+    const brief = wizardBrief();
+    if (!brief.goal) { $('wz-error').textContent = 'Describe what you want to find out first.'; return; }
+    const btn = $('wz-generate-btn');
+    btn.disabled = true; $('wz-error').textContent = '';
+    $('wz-status').innerHTML = '<span class="spinner dark"></span> Drafting… this takes a few seconds';
+    try {
+        const res = await api('/api/surveys/wizard', 'POST', brief);
+        applyDraft('new', res.draft);
+        $('wz-status').textContent = `Draft ready (${res.provider}). Review it in the next step.`;
+        gotoStep(2);
+    } catch (e) {
+        $('wz-error').textContent = e.message;
+        $('wz-status').textContent = '';
+    } finally { btn.disabled = false; }
+}
+async function wizardRefine(p) {
+    const fb = $(`${p}-refine`).value.trim();
+    if (!fb) { $(`${p}-refine-status`).textContent = 'Type some feedback first.'; return; }
+    const cur = readForm(p);
+    const current = { title: cur.title, topic: cur.topic, survey_type: cur.survey_type, questions: cur.questions, instructions: cur.instructions, facilitator_intro: cur.facilitator_intro, briefing_text: cur.briefing_text, image_style: cur.image_style, max_messages: cur.max_messages };
+    const body = { ...(p === 'new' ? wizardBrief() : { goal: cur.topic }), current, feedback: fb };
+    if (!body.goal) body.goal = cur.title || 'Revise the survey';
+    $(`${p}-refine-status`).innerHTML = '<span class="spinner dark"></span> Revising…';
+    try {
+        const res = await api('/api/surveys/wizard', 'POST', body);
+        applyDraft(p, res.draft);
+        $(`${p}-refine`).value = '';
+        $(`${p}-refine-status`).textContent = 'Updated.';
+    } catch (e) { $(`${p}-refine-status`).textContent = e.message; }
+}
+async function testImage(p) {
+    const status = $(`${p}-image-test-status`), img = $(`${p}-image-preview`);
+    status.innerHTML = '<span class="spinner dark"></span> Generating (10–30s)…';
+    img.classList.add('hidden');
+    try {
+        const res = await api('/api/admin/test-image', 'POST', {
+            provider: $(`${p}-image-provider`).value || undefined,
+            model: $(`${p}-image-model`).value.trim() || undefined,
+            base_url: $(`${p}-image-base`).value.trim() || undefined,
+            api_key: $(`${p}-image-key`).value.trim() || undefined,
+            style: $(`${p}-image-style`).value.trim() || undefined,
+            prompt: 'Students discussing ideas around a table in a bright classroom',
+        });
+        img.src = res.data_url; img.classList.remove('hidden');
+        status.textContent = `Generated with ${res.provider}${res.model ? ' · ' + res.model : ''}`;
+    } catch (e) { status.textContent = 'Failed: ' + e.message; }
+}
+
+function openCreateModal() {
+    if (!$('new-form').innerHTML) $('new-form').innerHTML = buildSurveyForm('new');
+    resetForm('new');
+    ['wz-goal', 'wz-audience', 'wz-tone', 'wz-extra'].forEach(id => $(id).value = '');
+    $('wz-type').value = ''; $('wz-num').value = 5; $('wz-status').textContent = ''; $('wz-error').textContent = '';
+    gotoStep(1);
+    $('create-modal').classList.remove('hidden');
+}
+function closeCreateModal() { $('create-modal').classList.add('hidden'); $('create-error').textContent = ''; }
+
+async function uploadBriefing(surveyId, p) {
+    const f = pendingBriefingFile[p];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append('file', f);
+    const res = await fetch(`/api/surveys/${surveyId}/briefing/upload`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    pendingBriefingFile[p] = null;
+    return data;
+}
+
+async function createSurvey() {
+    try {
+        if (!validateStep2(true)) { gotoStep(2); return; }
+        const data = readForm('new');
+        data.survey_code = $('new-code').value.trim() || undefined;
+        if (getBriefingMode('new') === 'upload' && !pendingBriefingFile.new) { data.briefing_type = 'none'; }
+        const btn = $('wz-create'); btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating…';
+        try {
+            const res = await api('/api/surveys', 'POST', data);
+            if (pendingBriefingFile.new) {
+                try { await uploadBriefing(res.id, 'new'); }
+                catch (e) { alert('Survey created, but the briefing upload failed: ' + e.message + '\nYou can upload it again from the Setup tab.'); }
+            }
+            closeCreateModal();
+            loadSurveys();
+        } finally { btn.disabled = false; btn.textContent = 'Create survey'; }
+    } catch (e) {
+        $('create-error').textContent = e.message;
     }
 }
 
 // ── Auth ──
 function toggleAuthMode() {
     isRegister = !isRegister;
-    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create Account' : 'Survey Admin';
-    document.querySelector('.auth-card .sub').textContent = isRegister ? 'Register a new admin account' : 'Sign in to manage your surveys';
+    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create account' : 'Survey Studio';
+    document.querySelector('.auth-card .sub').textContent = isRegister ? 'Register a new admin account' : 'Sign in to design conversations and analyse responses';
     document.querySelector('#login-form .btn').textContent = isRegister ? 'Register' : 'Sign In';
     document.querySelector('#login-form .btn').setAttribute('onclick', isRegister ? 'doRegister()' : 'doLogin()');
     document.querySelector('.link-btn').textContent = isRegister ? 'Already have an account? Sign in' : 'Create an account';
 }
-
 async function doLogin() {
-    const user = document.getElementById('auth-user').value.trim();
-    const pass = document.getElementById('auth-pass').value;
+    const user = $('auth-user').value.trim(), pass = $('auth-pass').value;
     if (!user || !pass) return;
     try {
         const res = await api('/api/auth/login', 'POST', { username: user, password: pass });
-        token = res.token;
-        userRole = res.role || 'teacher';
-        localStorage.setItem('admin_token', token);
-        localStorage.setItem('admin_role', userRole);
-        document.getElementById('admin-name').textContent = res.username;
+        token = res.token; userRole = res.role || 'teacher';
+        localStorage.setItem('admin_token', token); localStorage.setItem('admin_role', userRole);
+        $('admin-name').textContent = res.username;
         showDashboard();
-    } catch (e) {
-        document.getElementById('auth-error').textContent = e.message;
-    }
+    } catch (e) { $('auth-error').textContent = e.message; }
 }
-
 async function doRegister() {
-    const user = document.getElementById('auth-user').value.trim();
-    const pass = document.getElementById('auth-pass').value;
+    const user = $('auth-user').value.trim(), pass = $('auth-pass').value;
     if (!user || !pass) return;
-    if (/\s/.test(user)) {
-        document.getElementById('auth-error').textContent = 'Username must not contain spaces';
-        return;
-    }
-    if (pass.length < 8) {
-        document.getElementById('auth-error').textContent = 'Password must be at least 8 characters';
-        return;
-    }
-    if (!/[a-zA-Z]/.test(pass) || !/[0-9]/.test(pass)) {
-        document.getElementById('auth-error').textContent = 'Password must contain both letters and numbers';
-        return;
-    }
+    if (/\s/.test(user)) { $('auth-error').textContent = 'Username must not contain spaces'; return; }
+    if (pass.length < 8) { $('auth-error').textContent = 'Password must be at least 8 characters'; return; }
+    if (!/[a-zA-Z]/.test(pass) || !/[0-9]/.test(pass)) { $('auth-error').textContent = 'Password must contain both letters and numbers'; return; }
     try {
         const res = await api('/api/auth/register', 'POST', { username: user, password: pass });
-        token = res.token;
-        userRole = res.role || 'teacher';
-        localStorage.setItem('admin_token', token);
-        localStorage.setItem('admin_role', userRole);
-        document.getElementById('admin-name').textContent = res.username;
+        token = res.token; userRole = res.role || 'teacher';
+        localStorage.setItem('admin_token', token); localStorage.setItem('admin_role', userRole);
+        $('admin-name').textContent = res.username;
         showDashboard();
-    } catch (e) {
-        document.getElementById('auth-error').textContent = e.message;
-    }
+    } catch (e) { $('auth-error').textContent = e.message; }
 }
-
 function doLogout() {
-    token = null;
-    userRole = 'admin';
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_role');
-    document.getElementById('dashboard').classList.add('hidden');
-    document.getElementById('auth-screen').classList.remove('hidden');
+    token = null; userRole = 'admin';
+    localStorage.removeItem('admin_token'); localStorage.removeItem('admin_role');
+    $('dashboard').classList.add('hidden'); $('auth-screen').classList.remove('hidden');
 }
-
 async function showDashboard() {
-    document.getElementById('auth-screen').classList.add('hidden');
-    document.getElementById('dashboard').classList.remove('hidden');
+    $('auth-screen').classList.add('hidden'); $('dashboard').classList.remove('hidden');
     try {
         const me = await api('/api/admin/me');
-        userRole = me.role;
-        localStorage.setItem('admin_role', userRole);
-        document.getElementById('admin-name').textContent = me.username;
+        userRole = me.role; localStorage.setItem('admin_role', userRole);
+        $('admin-name').textContent = me.username;
     } catch (e) {}
-    // Show/hide admin-only elements based on confirmed role
-    document.querySelectorAll('.admin-only').forEach(el => {
-        el.classList.toggle('hidden', userRole !== 'admin');
-    });
-    // Update heading for teachers
-    if (userRole === 'teacher') {
-        document.querySelector('#list-view h2').textContent = 'My Surveys';
-    }
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('hidden', userRole !== 'admin'));
+    if (userRole === 'teacher') document.querySelector('#list-view h2').textContent = 'My Surveys';
     loadSurveys();
 }
 
@@ -840,14 +987,11 @@ async function api(url, method = 'GET', body = null) {
     if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(url, opts);
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
         if (res.status === 401) {
             doLogout();
-            const msg = (body && (body.username !== undefined || body.password !== undefined))
-                ? (data.detail || 'Invalid credentials')
-                : 'Session expired';
-            throw new Error(msg);
+            throw new Error((body && (body.username !== undefined)) ? (data.detail || 'Invalid credentials') : 'Session expired');
         }
         throw new Error(data.detail || 'Request failed');
     }
@@ -857,20 +1001,21 @@ async function api(url, method = 'GET', body = null) {
 // ── Surveys ──
 async function loadSurveys() {
     const surveys = await api('/api/surveys');
-    const grid = document.getElementById('survey-grid');
-    const noSurveys = document.getElementById('no-surveys');
+    const grid = $('survey-grid'), noSurveys = $('no-surveys');
     grid.innerHTML = '';
-    if (surveys.length === 0) { noSurveys.classList.remove('hidden'); return; }
+    if (!surveys.length) { noSurveys.classList.remove('hidden'); return; }
     noSurveys.classList.add('hidden');
     surveys.forEach(s => {
         const badgeClass = s.status === 'active' ? 'badge-active' : s.status === 'closed' ? 'badge-closed' : 'badge-draft';
-        const createdBy = (userRole === 'admin' && s.created_by) ? `<div style="font-size:0.78rem;color:var(--muted);margin-top:4px">By: ${esc(s.created_by)}</div>` : '';
+        const createdBy = (userRole === 'admin' && s.created_by) ? `<div class="kv" style="margin-top:4px">By ${esc(s.created_by)}</div>` : '';
+        const tags = [];
+        if (s.briefing_type && s.briefing_type !== 'none') tags.push('Briefing');
+        if (s.image_mode === 'generate') tags.push('AI images');
+        if (s.survey_type && SURVEY_TYPE_CONFIG[s.survey_type]) tags.push(SURVEY_TYPE_CONFIG[s.survey_type].label);
         grid.innerHTML += `
             <div class="survey-card" onclick="openSurvey('${s.id}')">
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                    <h3>${esc(s.title)}</h3>
-                    <span class="badge ${badgeClass}">${s.status}</span>
-                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>${esc(s.title)}</h3><span class="badge ${badgeClass}">${s.status}</span></div>
+                <div class="topic">${esc(s.topic)}</div>
                 <div class="code">${s.survey_code}</div>
                 ${createdBy}
                 <div class="stats-row">
@@ -878,58 +1023,17 @@ async function loadSurveys() {
                     <div class="stat"><div class="num">${s.completed_participants}</div><div class="lbl">Completed</div></div>
                     <div class="stat"><div class="num">${s.total_participants}</div><div class="lbl">Total</div></div>
                 </div>
+                <div class="feature-tags">${tags.map(t => `<span class="pill">${esc(t)}</span>`).join('')}</div>
             </div>`;
     });
 }
 
-function openCreateModal() { document.getElementById('create-modal').classList.remove('hidden'); }
-function closeCreateModal() { document.getElementById('create-modal').classList.add('hidden'); document.getElementById('create-error').textContent = ''; }
-
-async function createSurvey() {
-    try {
-        const surveyType = document.getElementById('new-survey-type').value;
-        const questions = document.getElementById('new-questions').value.trim();
-        const instructions = document.getElementById('new-instructions').value.trim();
-        const data = {
-            title: document.getElementById('new-title').value.trim(),
-            topic: document.getElementById('new-topic').value.trim(),
-            survey_type: surveyType || undefined,
-            questions: questions || undefined,
-            instructions: instructions || undefined,
-            facilitator_intro: document.getElementById('new-facilitator-intro').value.trim() || undefined,
-            survey_code: document.getElementById('new-code').value.trim() || undefined,
-            max_messages: parseInt(document.getElementById('new-max').value) || 20,
-            collect_name: document.getElementById('new-collect-name').checked,
-            collect_email: document.getElementById('new-collect-email').checked,
-            collect_phone: document.getElementById('new-collect-phone').checked,
-        };
-        if (!data.title || !data.topic) throw new Error('Title and topic are required');
-        if (!surveyType) throw new Error('Please select a survey type');
-        if (!questions) throw new Error('Please add at least one question');
-        await api('/api/surveys', 'POST', data);
-        closeCreateModal();
-        ['new-title','new-topic','new-questions','new-instructions','new-facilitator-intro','new-code'].forEach(id => document.getElementById(id).value = '');
-        document.getElementById('new-survey-type').value = '';
-        document.getElementById('new-type-desc').textContent = '';
-        document.getElementById('new-max').value = '20';
-        ['new-collect-name','new-collect-email','new-collect-phone'].forEach(id => document.getElementById(id).checked = false);
-        loadSurveys();
-    } catch (e) {
-        document.getElementById('create-error').textContent = e.message;
-    }
-}
-
-// ── Detail ──
-function showList() {
-    document.getElementById('list-view').classList.remove('hidden');
-    document.getElementById('detail-view').classList.add('hidden');
-    loadSurveys();
-}
+function showList() { $('list-view').classList.remove('hidden'); $('detail-view').classList.add('hidden'); loadSurveys(); }
 
 async function openSurvey(id) {
     currentSurveyId = id;
-    document.getElementById('list-view').classList.add('hidden');
-    document.getElementById('detail-view').classList.remove('hidden');
+    $('list-view').classList.add('hidden'); $('detail-view').classList.remove('hidden');
+    if (!$('edit-form').innerHTML) $('edit-form').innerHTML = buildSurveyForm('edit');
     await refreshDetail();
     loadAnalysisHistory();
     loadInsights();
@@ -938,92 +1042,81 @@ async function openSurvey(id) {
 async function refreshDetail() {
     const data = await api(`/api/surveys/${currentSurveyId}/results`);
     currentResults = data;
-    const s = data.survey; const st = data.stats;
-
-    document.getElementById('detail-title').textContent = s.title;
-    document.getElementById('detail-code').textContent = s.survey_code;
-    document.getElementById('copy-link-btn').setAttribute('data-code', s.survey_code);
+    const s = data.survey, st = data.stats;
+    $('detail-title').textContent = s.title;
+    $('detail-code').textContent = s.survey_code;
+    $('copy-link-btn').setAttribute('data-code', s.survey_code);
     const badgeClass = s.status === 'active' ? 'badge-active' : s.status === 'closed' ? 'badge-closed' : 'badge-draft';
-    document.getElementById('detail-badge').innerHTML = `<span class="badge ${badgeClass}">${s.status}</span>`;
-
-    document.getElementById('close-btn').classList.toggle('hidden', s.status !== 'active');
-    document.getElementById('reopen-btn').classList.toggle('hidden', s.status !== 'closed');
-
-    const avgMin = st.avg_completion_seconds ? (st.avg_completion_seconds / 60).toFixed(1) + ' min' : '\u2014';
-    document.getElementById('detail-stats').innerHTML = `
-        <div class="stat-box"><div class="num">${st.active_participants}</div><div class="lbl">Active Now</div></div>
+    $('detail-badge').innerHTML = `<span class="badge ${badgeClass}">${s.status}</span>`;
+    $('close-btn').classList.toggle('hidden', s.status !== 'active');
+    $('reopen-btn').classList.toggle('hidden', s.status !== 'closed');
+    const avgMin = st.avg_completion_seconds ? (st.avg_completion_seconds / 60).toFixed(1) + ' min' : '—';
+    $('detail-stats').innerHTML = `
+        <div class="stat-box"><div class="num">${st.active_participants}</div><div class="lbl">Active now</div></div>
         <div class="stat-box"><div class="num">${st.completed_participants}</div><div class="lbl">Completed</div></div>
         <div class="stat-box"><div class="num">${st.total_participants}</div><div class="lbl">Total</div></div>
-        <div class="stat-box"><div class="num">${avgMin}</div><div class="lbl">Avg Time</div></div>`;
+        <div class="stat-box"><div class="num">${avgMin}</div><div class="lbl">Avg time</div></div>`;
 
-    // Participants table
-    const tbody = document.getElementById('participant-tbody');
+    const tbody = $('participant-tbody');
     tbody.innerHTML = '';
-    document.getElementById('select-all-participants').checked = false;
-    document.getElementById('bulk-actions').style.display = 'none';
-    const select = document.getElementById('convo-select');
-    select.innerHTML = '<option value="">Select participant...</option>';
+    $('select-all-participants').checked = false;
+    $('bulk-actions').style.display = 'none';
+    const select = $('convo-select');
+    select.innerHTML = '<option value="">Select participant…</option>';
     data.participants.forEach((p, i) => {
-        const dur = p.duration_seconds ? (p.duration_seconds / 60).toFixed(1) + 'm' : '\u2014';
+        const dur = p.duration_seconds ? (p.duration_seconds / 60).toFixed(1) + 'm' : '—';
         const time = new Date(p.started_at).toLocaleString();
-        const statusClass = p.status === 'active' ? 'badge-active' : p.status === 'completed' ? 'badge-active' : 'badge-closed';
+        const statusClass = p.status === 'active' ? 'badge-active' : p.status === 'completed' ? 'badge-completed' : 'badge-abandoned';
         tbody.innerHTML += `<tr onclick="selectParticipant(${i})">
             <td onclick="event.stopPropagation()"><input type="checkbox" class="participant-cb" data-pid="${p.id}" onchange="updateBulkActions()"></td>
-            <td>${p.id.substring(0,8)}</td>
+            <td>${p.id.substring(0, 8)}</td>
             <td><span class="badge ${statusClass}">${p.status}</span></td>
-            <td>${p.message_count}</td>
-            <td>${dur}</td>
-            <td>${p.contact_name || '\u2014'}</td>
-            <td>${p.contact_email || '\u2014'}</td>
-            <td>${p.contact_phone || '\u2014'}</td>
+            <td>${p.message_count}</td><td>${dur}</td>
+            <td>${esc(p.contact_name) || '—'}</td><td>${esc(p.contact_email) || '—'}</td><td>${esc(p.contact_phone) || '—'}</td>
             <td>${time}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="event.stopPropagation();deleteParticipant('${p.id}')" title="Delete participant">&times;</button></td>
+            <td><button class="btn btn-danger btn-outline btn-sm" onclick="event.stopPropagation();deleteParticipant('${p.id}')" title="Delete participant">&times;</button></td>
         </tr>`;
-        const pLabel = p.contact_name ? `${p.contact_name} (${p.status})` : `P-${p.id.substring(0,8)} (${p.status})`;
+        const pLabel = p.contact_name ? `${p.contact_name} (${p.status})` : `P-${p.id.substring(0, 8)} (${p.status})`;
         select.innerHTML += `<option value="${i}">${esc(pLabel)}</option>`;
     });
 
-    // Settings / Setup wizard
-    document.getElementById('edit-title').value = s.title;
-    document.getElementById('edit-topic').value = s.topic;
-    document.getElementById('edit-facilitator-intro').value = s.facilitator_intro || '';
-    document.getElementById('edit-max').value = s.max_messages;
-    document.getElementById('edit-collect-name').checked = s.collect_name || false;
-    document.getElementById('edit-collect-email').checked = s.collect_email || false;
-    document.getElementById('edit-collect-phone').checked = s.collect_phone || false;
-    document.getElementById('edit-survey-type').value = s.survey_type || '';
-    document.getElementById('edit-questions').value = s.questions || '';
-    document.getElementById('edit-instructions').value = s.instructions || '';
-    const typeConfig = SURVEY_TYPE_CONFIG[s.survey_type];
-    document.getElementById('edit-type-desc').textContent = typeConfig ? typeConfig.description : '';
-    // Show legacy prompt section for surveys created before the wizard
-    const legacySection = document.getElementById('edit-legacy-prompt-section');
-    if (!s.survey_type && s.system_prompt) {
-        document.getElementById('edit-prompt').value = s.system_prompt || '';
-        legacySection.classList.remove('hidden');
-    } else {
-        legacySection.classList.add('hidden');
-    }
+    fillForm('edit', s);
+    const legacy = $('edit-legacy-prompt-section');
+    if (!s.survey_type && s.system_prompt) { $('edit-prompt').value = s.system_prompt || ''; legacy.classList.remove('hidden'); }
+    else legacy.classList.add('hidden');
+    $('edit-save-status').textContent = '';
 }
 
 function selectParticipant(idx) {
     switchTab('conversation', document.querySelectorAll('.tab')[2]);
-    document.getElementById('convo-select').value = idx;
+    $('convo-select').value = idx;
     showConversation(idx);
 }
-
-function downloadConversations() {
-    window.open(`/api/surveys/${currentSurveyId}/download-conversations?token=${token}`, '_blank');
-}
+function downloadConversations() { window.open(`/api/surveys/${currentSurveyId}/download-conversations?token=${token}`, '_blank'); }
+function openReport(format) { window.open(`/api/surveys/${currentSurveyId}/report?format=${format}&token=${token}`, '_blank'); }
 
 function showConversation(idx) {
     if (idx === '' || !currentResults) return;
     const p = currentResults.participants[idx];
-    const viewer = document.getElementById('convo-viewer');
+    const viewer = $('convo-viewer');
     viewer.innerHTML = '';
     p.messages.forEach(m => {
-        if (m.content.startsWith('[TOOL_EVENTS]')) return;
-        viewer.innerHTML += `<div class="convo-msg"><div class="role">${m.role}</div><div class="text">${esc(m.content)}</div></div>`;
+        if (m.content.startsWith('[TOOL_EVENTS]')) {
+            let events = [];
+            try { events = JSON.parse(m.content.slice(13)); } catch (_) {}
+            events.forEach(ev => {
+                if (ev.t === 'media' && ev.type === 'image') {
+                    viewer.innerHTML += `<div class="convo-media"><img src="${esc(ev.url)}" alt="${esc(ev.alt || '')}" loading="lazy">${ev.caption ? `<div class="cap">${esc(ev.caption)}</div>` : ''}</div>`;
+                } else if (ev.t === 'media' && ev.type === 'video') {
+                    viewer.innerHTML += `<div class="kv">[Video shown${ev.caption ? ': ' + esc(ev.caption) : ''}]</div>`;
+                } else if (ev.t === 'buttons') {
+                    viewer.innerHTML += `<div class="convo-opts">${(ev.options || []).map(o => `<span>${esc(o.label)}</span>`).join('')}</div>`;
+                }
+            });
+            return;
+        }
+        if (m.content.startsWith('(The participant has just joined') || m.content === '(presented interactive content)') return;
+        viewer.innerHTML += `<div class="convo-msg ${m.role}"><div class="role">${m.role === 'user' ? 'Participant' : 'Facilitator'}</div>${esc(m.content)}</div>`;
     });
 }
 
@@ -1031,54 +1124,32 @@ function switchTab(name, el) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
-    document.getElementById('tab-' + name).classList.add('active');
+    $('tab-' + name).classList.add('active');
 }
-
 async function closeSurvey() {
     if (!confirm('Close this survey? Active participants will be marked as abandoned.')) return;
-    await api(`/api/surveys/${currentSurveyId}/close`, 'POST');
-    refreshDetail();
+    await api(`/api/surveys/${currentSurveyId}/close`, 'POST'); refreshDetail();
 }
-
-async function reopenSurvey() {
-    await api(`/api/surveys/${currentSurveyId}/reopen`, 'POST');
-    refreshDetail();
-}
-
+async function reopenSurvey() { await api(`/api/surveys/${currentSurveyId}/reopen`, 'POST'); refreshDetail(); }
 async function deleteParticipant(pid) {
     if (!confirm('Delete this participant and all their messages?')) return;
-    try {
-        await api(`/api/surveys/${currentSurveyId}/participants/${pid}`, 'DELETE');
-        refreshDetail();
-    } catch (e) { alert('Failed to delete: ' + e.message); }
+    try { await api(`/api/surveys/${currentSurveyId}/participants/${pid}`, 'DELETE'); refreshDetail(); }
+    catch (e) { alert('Failed to delete: ' + e.message); }
 }
-
-function toggleAllParticipants(checked) {
-    document.querySelectorAll('.participant-cb').forEach(cb => cb.checked = checked);
-    updateBulkActions();
-}
-
+function toggleAllParticipants(checked) { document.querySelectorAll('.participant-cb').forEach(cb => cb.checked = checked); updateBulkActions(); }
 function updateBulkActions() {
     const checked = document.querySelectorAll('.participant-cb:checked');
-    const bar = document.getElementById('bulk-actions');
-    const count = document.getElementById('selected-count');
-    bar.style.display = checked.length > 0 ? 'flex' : 'none';
-    count.textContent = checked.length + ' selected';
-    // Sync select-all checkbox
+    $('bulk-actions').style.display = checked.length > 0 ? 'flex' : 'none';
+    $('selected-count').textContent = checked.length + ' selected';
     const all = document.querySelectorAll('.participant-cb');
-    document.getElementById('select-all-participants').checked = all.length > 0 && checked.length === all.length;
+    $('select-all-participants').checked = all.length > 0 && checked.length === all.length;
 }
-
 async function bulkDeleteParticipants() {
     const ids = [...document.querySelectorAll('.participant-cb:checked')].map(cb => cb.dataset.pid);
-    if (!ids.length) return;
-    if (!confirm(`Delete ${ids.length} participant(s) and all their messages?`)) return;
-    try {
-        await api(`/api/surveys/${currentSurveyId}/participants/bulk-delete`, 'POST', { participant_ids: ids });
-        refreshDetail();
-    } catch (e) { alert('Failed to delete: ' + e.message); }
+    if (!ids.length || !confirm(`Delete ${ids.length} participant(s) and all their messages?`)) return;
+    try { await api(`/api/surveys/${currentSurveyId}/participants/bulk-delete`, 'POST', { participant_ids: ids }); refreshDetail(); }
+    catch (e) { alert('Failed to delete: ' + e.message); }
 }
-
 function downloadSelectedCSV() {
     if (!currentResults) return;
     const ids = new Set([...document.querySelectorAll('.participant-cb:checked')].map(cb => cb.dataset.pid));
@@ -1088,98 +1159,124 @@ function downloadSelectedCSV() {
         if (!ids.has(p.id)) return;
         const label = p.contact_name || 'P-' + p.id.substring(0, 8);
         p.messages.forEach(m => {
-            if (m.content.startsWith('[TOOL_EVENTS]')) return;
-            rows.push([label, p.contact_name || '', p.status, m.role, m.content, m.timestamp || '']);
+            if (m.content.startsWith('[TOOL_EVENTS]') || m.content.startsWith('(The participant has just joined')) return;
+            rows.push([label, p.contact_name || '', p.status, m.role, m.content, m.created_at || '']);
         });
     });
     const csvEscape = v => { const s = String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([rows.map(r => r.map(csvEscape).join(',')).join('\n')], { type: 'text/csv' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (currentResults.survey.title || 'conversations') + '.csv';
-    a.click();
+    a.href = URL.createObjectURL(blob); a.download = (currentResults.survey.title || 'conversations') + '.csv'; a.click();
     URL.revokeObjectURL(a.href);
 }
-
 function downloadSelectedPDF() {
     if (!currentResults) return;
     const ids = new Set([...document.querySelectorAll('.participant-cb:checked')].map(cb => cb.dataset.pid));
     if (!ids.size) return;
     const selected = currentResults.participants.filter(p => ids.has(p.id));
     const title = currentResults.survey.title || 'Conversations';
-    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
-<style>
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:40px;color:#222}
-h1{font-size:1.3rem;margin-bottom:4px}
-.meta{font-size:0.8rem;color:#777;margin-bottom:16px}
-.msg{margin-bottom:10px;padding:8px 12px;border-radius:8px;max-width:85%}
-.msg.assistant{background:#e8f0fe;margin-right:auto}
-.msg.user{background:#f0f0f0;margin-left:auto}
-.role{font-weight:600;font-size:0.75rem;text-transform:uppercase;margin-bottom:2px;color:#555}
-.text{white-space:pre-wrap;font-size:0.9rem}
-.ts{font-size:0.7rem;color:#999;margin-top:2px}
-.participant{page-break-before:always}
-.participant:first-child{page-break-before:auto}
-@media print{body{margin:20px}}
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;margin:40px;color:#1f2937}h1{font-size:1.3rem;margin-bottom:4px}.meta{font-size:.8rem;color:#777;margin-bottom:16px}
+.msg{margin-bottom:10px;padding:8px 12px;border-radius:8px;max-width:85%}.msg.assistant{background:#f1f5f9;margin-right:auto}.msg.user{background:#dbeafe;margin-left:auto}
+.role{font-weight:600;font-size:.72rem;text-transform:uppercase;margin-bottom:2px;color:#555}.text{white-space:pre-wrap;font-size:.9rem}.ts{font-size:.7rem;color:#999;margin-top:2px}
+img{max-width:60%;border-radius:8px;display:block;margin:8px 0}.participant{page-break-before:always}.participant:first-child{page-break-before:auto}@media print{body{margin:20px}}
 </style></head><body>`;
     selected.forEach(p => {
         const label = p.contact_name || 'P-' + p.id.substring(0, 8);
-        html += `<div class="participant"><h1>${label}</h1><div class="meta">Status: ${p.status} &bull; Messages: ${p.message_count}</div>`;
+        html += `<div class="participant"><h1>${esc(label)}</h1><div class="meta">Status: ${p.status} &bull; Messages: ${p.message_count}</div>`;
         p.messages.forEach(m => {
-            if (m.content.startsWith('[TOOL_EVENTS]')) return;
-            const ts = m.timestamp ? new Date(m.timestamp).toLocaleString() : '';
-            const escaped = m.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            html += `<div class="msg ${m.role}"><div class="role">${m.role}</div><div class="text">${escaped}</div>${ts ? '<div class="ts">' + ts + '</div>' : ''}</div>`;
+            if (m.content.startsWith('[TOOL_EVENTS]')) {
+                try { JSON.parse(m.content.slice(13)).forEach(ev => { if (ev.t === 'media' && ev.type === 'image') html += `<img src="${esc(new URL(ev.url, location.origin).href)}">`; }); } catch (_) {}
+                return;
+            }
+            if (m.content.startsWith('(The participant has just joined') || m.content === '(presented interactive content)') return;
+            const ts = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+            html += `<div class="msg ${m.role}"><div class="role">${m.role === 'user' ? 'Participant' : 'Facilitator'}</div><div class="text">${esc(m.content)}</div>${ts ? '<div class="ts">' + ts + '</div>' : ''}</div>`;
         });
         html += '</div>';
     });
     html += '</body></html>';
-    const w = window.open('', '_blank');
-    w.document.write(html);
-    w.document.close();
-    w.onload = () => w.print();
+    const w = window.open('', '_blank'); w.document.write(html); w.document.close(); w.onload = () => w.print();
 }
-
 function copySurveyLink() {
-    const code = document.getElementById('copy-link-btn').getAttribute('data-code');
-    const link = window.location.origin + '/?code=' + code;
-    navigator.clipboard.writeText(link).then(() => {
-        const btn = document.getElementById('copy-link-btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => { btn.textContent = 'Copy Link'; }, 2000);
+    const code = $('copy-link-btn').getAttribute('data-code');
+    navigator.clipboard.writeText(window.location.origin + '/?code=' + code).then(() => {
+        const btn = $('copy-link-btn'); btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy participant link'; }, 2000);
     });
 }
-
 async function deleteSurvey() {
-    if (!confirm('WARNING: You are about to permanently delete this survey.\n\nThis will remove all participants, conversations, and analysis data. This action cannot be undone.\n\nAre you sure you want to delete this survey?')) return;
+    if (!confirm('WARNING: You are about to permanently delete this survey.\n\nThis will remove all participants, conversations, images and analysis data. This action cannot be undone.\n\nAre you sure?')) return;
+    try { await api(`/api/surveys/${currentSurveyId}`, 'DELETE'); showList(); }
+    catch (e) { alert('Failed to delete: ' + e.message); }
+}
+async function saveSettings() {
+    const status = $('edit-save-status');
     try {
-        await api(`/api/surveys/${currentSurveyId}`, 'DELETE');
-        showList();
-    } catch (e) { alert('Failed to delete: ' + e.message); }
+        const data = readForm('edit');
+        const legacy = $('edit-prompt');
+        if (legacy && !$('edit-legacy-prompt-section').classList.contains('hidden')) data.system_prompt = legacy.value.trim() || undefined;
+        if (getBriefingMode('edit') === 'upload' && !pendingBriefingFile.edit) { delete data.briefing_type; delete data.briefing_url; }
+        status.innerHTML = '<span class="spinner dark"></span> Saving…';
+        await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
+        if (pendingBriefingFile.edit) await uploadBriefing(currentSurveyId, 'edit');
+        status.textContent = 'Saved.';
+        refreshDetail();
+    } catch (e) { status.textContent = 'Error: ' + e.message; }
 }
 
-async function saveSettings() {
-    const data = {
-        title: document.getElementById('edit-title').value.trim(),
-        topic: document.getElementById('edit-topic').value.trim(),
-        survey_type: document.getElementById('edit-survey-type').value || undefined,
-        questions: document.getElementById('edit-questions').value.trim() || undefined,
-        instructions: document.getElementById('edit-instructions').value.trim() || undefined,
-        facilitator_intro: document.getElementById('edit-facilitator-intro').value.trim() || undefined,
-        max_messages: parseInt(document.getElementById('edit-max').value) || undefined,
-        collect_name: document.getElementById('edit-collect-name').checked,
-        collect_email: document.getElementById('edit-collect-email').checked,
-        collect_phone: document.getElementById('edit-collect-phone').checked,
+// ── Account settings ──
+async function loadAccountSettings() { accountSettings = await api('/api/admin/settings'); return accountSettings; }
+async function openSettingsModal() {
+    $('settings-modal').classList.remove('hidden');
+    $('st-error').textContent = '';
+    try {
+        const s = await loadAccountSettings();
+        imageProviders = s.image_providers;
+        $('st-provider').value = s.llm_provider || '';
+        $('st-model').value = s.llm_model || '';
+        $('st-anthropic-key').value = ''; $('st-openrouter-key').value = ''; $('st-image-key').value = '';
+        $('st-anthropic-status').textContent = s.has_api_key ? 'A key is stored. Enter a new one to replace it, or type "clear" to remove it.' : (s.env.anthropic_key ? 'Using the server default key.' : 'No key set.');
+        $('st-openrouter-status').textContent = s.has_openrouter_key ? 'A key is stored. Enter a new one to replace it, or type "clear" to remove it.' : (s.env.openrouter_key ? 'Using the server default key.' : 'No key set. Get one at openrouter.ai/keys.');
+        const ip = $('st-image-provider');
+        ip.innerHTML = '<option value="">System default</option>' + Object.entries(s.image_providers).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+        ip.value = s.image_provider || '';
+        $('st-image-model').value = s.image_model || '';
+        $('st-image-base').value = s.image_base_url || '';
+        $('st-image-key-status').textContent = s.has_image_api_key ? 'A key is stored. Enter a new one to replace it, or type "clear" to remove it.' : '';
+        $('st-effective').innerHTML = `Currently in effect: <b>${esc(s.effective.provider)}</b> · chat model <b>${esc(s.effective.model)}</b> · analysis <b>${esc(s.effective.analysis_model)}</b> · key ${s.effective.has_key ? 'present' : '<span style="color:var(--danger)">missing</span>'} · images via <b>${esc(s.effective.image_provider)}</b>`;
+        onSettingsProviderChange(); onSettingsImageProviderChange();
+    } catch (e) { $('st-error').textContent = e.message; }
+}
+function closeSettingsModal() { $('settings-modal').classList.add('hidden'); }
+function onSettingsProviderChange() {
+    const v = $('st-provider').value;
+    const d = accountSettings ? accountSettings.defaults : null;
+    $('st-provider-help').textContent = v === 'openrouter' ? 'OpenRouter gives access to hundreds of models (Claude, GPT, Gemini, Llama…) with one key.' : v === 'anthropic' ? 'Uses the Anthropic API directly.' : 'Uses whichever provider the server is configured with.';
+    $('st-model-help').textContent = d ? (v === 'openrouter' ? `Default: ${d.openrouter.chat}` : `Default: ${d.anthropic.chat} (analysis: ${d.anthropic.analysis})`) : '';
+    if (v) fillDatalist('st-model-list', v, 'chat'); else $('st-model-list').innerHTML = '';
+}
+function onSettingsImageProviderChange() {
+    const v = $('st-image-provider').value;
+    const info = imageProviders && imageProviders[v];
+    $('st-image-help').textContent = info ? info.help : 'Pollinations (free) is used unless you choose otherwise.';
+    $('st-image-base-wrap').classList.toggle('hidden', v !== 'openai');
+    if (v === 'openrouter') fillDatalist('st-image-model-list', 'openrouter', 'image'); else $('st-image-model-list').innerHTML = '';
+}
+async function saveAccountSettings() {
+    const keyVal = el => { const v = $(el).value; if (!v.trim()) return undefined; return v.trim().toLowerCase() === 'clear' ? '' : v.trim(); };
+    const body = {
+        llm_provider: $('st-provider').value, llm_model: $('st-model').value.trim(),
+        image_provider: $('st-image-provider').value, image_model: $('st-image-model').value.trim(), image_base_url: $('st-image-base').value.trim(),
     };
-    // Include raw system_prompt for legacy surveys (no wizard type set)
-    const legacyPrompt = document.getElementById('edit-prompt');
-    if (legacyPrompt && !document.getElementById('edit-legacy-prompt-section').classList.contains('hidden')) {
-        data.system_prompt = legacyPrompt.value.trim() || undefined;
-    }
-    await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
-    alert('Settings saved!');
-    refreshDetail();
+    const ak = keyVal('st-anthropic-key'), ok = keyVal('st-openrouter-key'), ik = keyVal('st-image-key');
+    if (ak !== undefined) body.api_key = ak;
+    if (ok !== undefined) body.openrouter_key = ok;
+    if (ik !== undefined) body.image_api_key = ik;
+    try {
+        await api('/api/admin/settings', 'PUT', body);
+        modelCache = {};
+        closeSettingsModal();
+    } catch (e) { $('st-error').textContent = e.message; }
 }
 
 // ── Insights ──
@@ -1818,99 +1915,49 @@ function initChart(canvasId, data) {
     new Chart(canvas, config);
 }
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
 // ── Teachers ──
 let lastInviteCode = '';
-function openTeachersModal() {
-    document.getElementById('teachers-modal').classList.remove('hidden');
-    document.getElementById('invite-link-box').classList.add('hidden');
-    loadTeachers();
-}
-function closeTeachersModal() { document.getElementById('teachers-modal').classList.add('hidden'); }
-
+function openTeachersModal() { $('teachers-modal').classList.remove('hidden'); $('invite-link-box').classList.add('hidden'); loadTeachers(); }
+function closeTeachersModal() { $('teachers-modal').classList.add('hidden'); }
 async function loadTeachers() {
-    const container = document.getElementById('teachers-list');
+    const container = $('teachers-list');
     try {
         const teachers = await api('/api/admin/teachers');
-        if (!teachers.length) {
-            container.innerHTML = '<p style="color:var(--muted);font-size:0.88rem">No teachers yet. Generate an invite link to get started.</p>';
-            return;
-        }
+        if (!teachers.length) { container.innerHTML = '<p class="kv">No teachers yet. Generate an invite link to get started.</p>'; return; }
         container.innerHTML = teachers.map(t => `
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:rgba(255,255,255,0.3);border-radius:var(--radius-sm);margin-bottom:8px;border:1px solid var(--border)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--surface-2);border-radius:var(--radius-sm);margin-bottom:8px;border:1px solid var(--border)">
                 <div>
                     <div style="font-weight:600">${esc(t.username)}</div>
-                    <div style="font-size:0.78rem;color:var(--muted)">${t.survey_count} survey${t.survey_count!==1?'s':''} &middot; API key: ${t.has_api_key ? 'Set' : 'Not set'}</div>
+                    <div class="kv">${t.survey_count} survey${t.survey_count !== 1 ? 's' : ''} &middot; Anthropic key: ${t.has_api_key ? 'set' : 'not set'} &middot; OpenRouter key: ${t.has_openrouter_key ? 'set' : 'not set'}${t.llm_provider ? ' &middot; provider: ' + esc(t.llm_provider) : ''}</div>
                 </div>
-                <button class="btn btn-sm btn-danger" onclick="removeTeacher('${t.id}','${esc(t.username)}')">Remove</button>
-            </div>
-        `).join('');
-    } catch (e) {
-        container.innerHTML = '<p style="color:var(--danger);font-size:0.88rem">Failed to load teachers</p>';
-    }
+                <button class="btn btn-sm btn-danger btn-outline" onclick="removeTeacher('${t.id}','${esc(t.username)}')">Remove</button>
+            </div>`).join('');
+    } catch (e) { container.innerHTML = '<p style="color:var(--danger);font-size:.88rem">Failed to load teachers</p>'; }
 }
-
 async function generateInvite() {
     try {
         const res = await api('/api/admin/invite', 'POST');
         lastInviteCode = res.code;
-        const link = window.location.origin + '/register?code=' + res.code;
-        document.getElementById('invite-link-text').textContent = link;
-        document.getElementById('invite-link-box').classList.remove('hidden');
+        $('invite-link-text').textContent = window.location.origin + '/register?code=' + res.code;
+        $('invite-link-box').classList.remove('hidden');
     } catch (e) { alert('Failed to generate invite: ' + e.message); }
 }
-
 function copyInviteLink() {
-    const text = document.getElementById('invite-link-text').textContent;
-    navigator.clipboard.writeText(text).then(() => {
-        const btn = document.querySelector('#invite-link-box .btn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy Link', 2000);
+    navigator.clipboard.writeText($('invite-link-text').textContent).then(() => {
+        const btn = document.querySelector('#invite-link-box .btn'); btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy link', 2000);
     });
 }
-
 async function removeTeacher(id, name) {
     if (!confirm(`Remove teacher "${name}"? Their surveys will be reassigned to you.`)) return;
-    try {
-        await api(`/api/admin/teachers/${id}`, 'DELETE');
-        loadTeachers();
-        loadSurveys();
-    } catch (e) { alert('Failed to remove: ' + e.message); }
-}
-
-// ── Settings ──
-function openSettingsModal() {
-    document.getElementById('settings-modal').classList.remove('hidden');
-    document.getElementById('settings-api-key').value = '';
-    api('/api/admin/me').then(me => {
-        document.getElementById('settings-api-status').textContent = me.has_api_key
-            ? 'An API key is currently set. Enter a new one to update, or leave blank to keep it.'
-            : 'No API key set. Surveys will use the system default key.';
-    });
-}
-function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
-
-async function saveApiKey() {
-    const key = document.getElementById('settings-api-key').value;
-    try {
-        const res = await api('/api/admin/settings', 'PUT', { api_key: key || null });
-        document.getElementById('settings-api-status').textContent = res.has_api_key
-            ? 'API key saved successfully.'
-            : 'API key cleared. Using system default.';
-        document.getElementById('settings-api-key').value = '';
-    } catch (e) { alert('Failed to save: ' + e.message); }
+    try { await api(`/api/admin/teachers/${id}`, 'DELETE'); loadTeachers(); loadSurveys(); }
+    catch (e) { alert('Failed to remove: ' + e.message); }
 }
 
 // ── Init ──
 if (token) {
-    api('/api/admin/me').then(me => {
-        userRole = me.role;
-        localStorage.setItem('admin_role', userRole);
-        showDashboard();
-    }).catch(() => doLogout());
+    api('/api/admin/me').then(me => { userRole = me.role; localStorage.setItem('admin_role', userRole); showDashboard(); }).catch(() => doLogout());
 }
-
 </script>
 </body>
 </html>

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, String, Text, DateTime, Boolean, Integer, Float,
-    ForeignKey, Enum, create_engine, Index
+    ForeignKey, Enum, create_engine, Index, LargeBinary
 )
 try:
     from sqlalchemy.orm import declarative_base
@@ -38,7 +38,14 @@ class AdminUser(Base):
     password_hash = Column(String(255), nullable=False)
     role = Column(String(20), nullable=False, server_default="admin")  # "admin" or "teacher"
     parent_admin_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True)
-    encrypted_api_key = Column(Text, nullable=True)
+    encrypted_api_key = Column(Text, nullable=True)            # Anthropic key
+    llm_provider = Column(String(20), nullable=True)           # anthropic | openrouter
+    llm_model = Column(String(120), nullable=True)
+    encrypted_openrouter_key = Column(Text, nullable=True)
+    image_provider = Column(String(30), nullable=True)         # pollinations | openrouter | openai
+    image_model = Column(String(120), nullable=True)
+    image_base_url = Column(Text, nullable=True)
+    encrypted_image_api_key = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     surveys = relationship("Survey", back_populates="created_by_admin")
@@ -65,6 +72,25 @@ class Survey(Base):
     survey_type = Column(String(30), nullable=True)      # "general_sensing" | "categorising" | "depth_survey"
     questions = Column(Text, nullable=True)               # what to ask participants
     instructions = Column(Text, nullable=True)            # how the bot should behave
+
+    # --- Briefing shown before the chat (slide deck / video / document) ---
+    briefing_type = Column(String(20), nullable=True)     # none | slides | video | document | link
+    briefing_url = Column(Text, nullable=True)            # external URL or /api/assets/{id}
+    briefing_text = Column(Text, nullable=True)           # task description shown alongside the media
+    briefing_title = Column(String(255), nullable=True)
+
+    # --- Visuals shown in the media panel while the bot asks questions ---
+    image_mode = Column(String(20), nullable=True)        # none | stock | generate
+    image_provider = Column(String(30), nullable=True)    # pollinations | openrouter | openai
+    image_model = Column(String(120), nullable=True)
+    image_base_url = Column(Text, nullable=True)          # optional OpenAI-compatible base URL
+    encrypted_image_api_key = Column(Text, nullable=True)
+    image_style = Column(Text, nullable=True)             # style prefix for generated images
+
+    # --- LLM override for this survey (falls back to owner / parent / env) ---
+    llm_provider = Column(String(20), nullable=True)      # anthropic | openrouter
+    llm_model = Column(String(120), nullable=True)
+    encrypted_llm_api_key = Column(Text, nullable=True)
 
     created_by_admin = relationship("AdminUser", back_populates="surveys")
     participants = relationship("Participant", back_populates="survey", cascade="all, delete-orphan")
@@ -151,3 +177,19 @@ class InviteCode(Base):
     used_by_id = Column(UUID(as_uuid=True), ForeignKey("admin_users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     used_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class MediaAsset(Base):
+    """Binary media stored in the database: generated images and uploaded briefing files."""
+    __tablename__ = "media_assets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    survey_id = Column(UUID(as_uuid=True), ForeignKey("surveys.id", ondelete="CASCADE"), nullable=True, index=True)
+    participant_id = Column(UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kind = Column(String(20), nullable=False)          # generated | briefing
+    mime_type = Column(String(100), nullable=False)
+    filename = Column(String(255), nullable=True)
+    prompt = Column(Text, nullable=True)               # generation prompt, if any
+    data = Column(LargeBinary, nullable=False)
+    size_bytes = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

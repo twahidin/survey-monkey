@@ -4,15 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered survey chatbot with agentic tool-use. Participants join via a survey code and chat with a Claude-powered bot that can show images, videos, and interactive button options. Admins create surveys, monitor live participation, view AI-generated insights (sentiment, themes, engagement), read transcripts, and analyze responses via an AI chatbot.
+AI-powered conversational survey / formative-assessment chatbot for teachers and students. Participants join via an access code, read a teacher-supplied briefing (slides, video or document), then chat with an AI facilitator in a two-panel UI (visual panel + chat) that can show AI-generated illustrations, stock images, videos and button options. Teachers design surveys with an AI-assisted wizard, monitor participation, view insights, read transcripts and download reports (HTML/DOCX). The chat model can be Claude (Anthropic SDK) or any model on OpenRouter.
 
 ## Commands
 
 ```bash
 # Local development (requires PostgreSQL running)
 export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/survey_db
-export ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_API_KEY=sk-ant-...      # or OPENROUTER_API_KEY=sk-or-...
 export SECRET_KEY=dev-secret-key
+export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())")
 # Optional: for media in chat
 export UNSPLASH_ACCESS_KEY=...
 export PEXELS_API_KEY=...
@@ -30,26 +31,32 @@ No test suite, linter, or build step exists. The frontend is vanilla HTML/CSS/JS
 
 ## Architecture
 
-**Four Python modules, no framework beyond FastAPI:**
+**Python modules, no framework beyond FastAPI:**
 
-- `main.py` — All API routes and the FastAPI app. Uses Anthropic tool_use API for agentic chat (show_image, show_buttons, show_video). Contains tool definitions (`SURVEY_TOOLS`), async media fetchers (Unsplash/Pexels), insights generation, and Pydantic schemas inline. SSE streaming at `/api/survey/chat/stream` with typed events: `chunk`, `media`, `buttons`, `done`, `error`.
-- `models.py` — SQLAlchemy ORM models using PostgreSQL UUID primary keys. Seven tables: `admin_users` (with `role`, `parent_admin_id`, `encrypted_api_key` for multi-tenant), `surveys`, `participants`, `chat_messages`, `analysis_messages`, `survey_insights`, `invite_codes`. Enums: `SurveyStatus` (draft/active/closed), `ParticipantStatus` (active/completed/abandoned).
-- `database.py` — Engine creation, session factory, `init_db()` with inline migrations. Auto-corrects Railway's `postgres://` to `postgresql://`. Pool sized for ~100 concurrent connections (25 + 75 overflow).
-- `auth.py` — PBKDF2 password hashing, JWT tokens (PyJWT), 24-hour expiry, Fernet encryption for per-user API keys. Admin auth via cookie (`admin_token`) or Bearer header.
+- `main.py` — All API routes and the FastAPI app. Builds the tool list per survey (`build_survey_tools`: show_buttons always; show_image as AI generation or stock photo depending on `image_mode`; show_video when Pexels is configured), resolves provider config (`resolve_llm_config`: survey override → owner → parent admin → env), processes tool calls (`_process_tool_call` persists generated images as `MediaAsset` rows), and serves the wizard (`POST /api/surveys/wizard`), briefing uploads, assets (`GET /api/assets/{id}`), settings, insights, analysis chat and reports. SSE streaming at `/api/survey/chat/stream` with typed events: `chunk`, `status`, `media`, `buttons`, `done`, `error`.
+- `llm.py` — Provider abstraction. `stream_chat` / `complete_chat` take an `LLMConfig` and route to Anthropic (official SDK, `messages.stream`/`create` with tools) or OpenRouter (OpenAI-compatible chat completions over httpx, with tool-call delta accumulation). Tools are always defined in Anthropic `input_schema` form and converted for OpenRouter. `list_openrouter_models` feeds the model dropdowns. `LLMError` carries a user-safe message.
+- `imagegen.py` — Image generation providers returning `(bytes, mime)`: `pollinations` (free, no key), `openrouter` (chat completions with `modalities: ["image","text"]`), `openai` (Images API, or any compatible endpoint via `image_base_url`).
+- `report.py` — HTML (print-to-PDF) and DOCX report builders for the teacher's full survey report and the participant's own transcript; embeds stored images inline.
+- `models.py` — SQLAlchemy ORM models using PostgreSQL UUID primary keys. Tables: `admin_users` (role, parent_admin_id, encrypted Anthropic/OpenRouter/image keys, provider defaults), `surveys` (wizard fields, briefing_*, image_*, llm_* overrides), `participants`, `chat_messages`, `analysis_messages`, `survey_insights`, `invite_codes`, `media_assets` (generated images + uploaded briefings as BYTEA).
+- `database.py` — Engine creation, session factory, `init_db()` with inline `ADD COLUMN IF NOT EXISTS` migrations. Auto-corrects Railway's `postgres://` to `postgresql://`.
+- `auth.py` — PBKDF2 password hashing, JWT tokens (PyJWT), 24-hour expiry, Fernet encryption for stored API keys. Admin auth via cookie (`admin_token`), Bearer header, or `?token=` query (used for report/download links).
 
-**Frontend (no build step, glassmorphism design):**
+**Frontend (no build step, clean professional design, Inter font):**
 
-- `templates/survey.html` — Participant chat with responsive media panel (side-by-side on desktop, top on mobile), interactive button options (single/multi-select), typing indicator, animated completion screen with confetti.
-- `templates/admin.html` — Admin SPA with Insights tab (sentiment bars, theme rankings, engagement histogram, sortable analytics table), plus survey CRUD, transcript viewer, and analysis chatbot.
+- `templates/survey.html` — Participant flow: join → optional contact details → briefing (embeds YouTube/Vimeo/Google Slides/Drive/Canva/PDF/Office viewer/MP4/image via `buildEmbed`) → two-panel chat (visual panel left on desktop, on top and collapsible on mobile, with image history thumbnails) → completion with "Download my responses". Resumes sessions from localStorage.
+- `templates/admin.html` — Teacher SPA: 5-step create wizard (Describe with AI draft → Conversation → Briefing → Visuals → Publish), Setup tab reusing the same form (`buildSurveyForm(prefix)` / `readForm` / `fillForm`), Insights, Participants, Conversations (renders generated images), Analysis chat with charts, report buttons, account Settings modal (provider/model/keys, image provider defaults).
 
 **Key flows:**
 
-1. Participant joins → `POST /api/survey/join` → creates Participant, Claude generates opening message
-2. Chat → `POST /api/survey/chat/stream` (SSE) → Claude may call tools (show_image/show_buttons/show_video), backend processes tool calls and streams typed events
-3. Tool events stored as `[TOOL_EVENTS]` prefixed messages for transcript replay, filtered from Claude history
-4. Insights → `GET /api/surveys/{id}/insights` → Claude analyzes all transcripts, returns structured JSON (sentiment, themes, engagement), cached in `survey_insights` table for 5 minutes
-5. Analysis → `POST /api/surveys/{id}/analyze` → freeform AI analysis chatbot
+1. Teacher creates a survey → wizard `POST /api/surveys/wizard` drafts JSON config with the analysis model → `POST /api/surveys` → optional `POST /api/surveys/{id}/briefing/upload`
+2. Participant joins → `POST /api/survey/join` → creates Participant, opening message generated via `complete_chat` with tools; response includes `briefing` and `image_mode`
+3. Chat → `POST /api/survey/chat/stream` (SSE) → `stream_chat` yields text and tool_use events; image tool calls emit a `status` event, generate the image, store it, and emit `media` with `/api/assets/{id}`
+4. Tool events stored as `[TOOL_EVENTS]` prefixed messages for transcript replay and reports, filtered from model history
+5. Insights → `GET /api/surveys/{id}/insights` → structured JSON cached 5 minutes; Analysis → `POST /api/surveys/{id}/analyze`
+6. Reports → `GET /api/surveys/{id}/report?format=html|docx` (teacher), `GET /api/survey/my-report?session_token=` (participant)
 
-**Environment variables:** `DATABASE_URL`, `ANTHROPIC_API_KEY`, `SECRET_KEY`, `ENCRYPTION_KEY` (optional, for Fernet encryption of per-user API keys; auto-generated if unset), `DEFAULT_ADMIN_USER`, `DEFAULT_ADMIN_PASS`, `CLAUDE_CHAT_MODEL` (default: `claude-haiku-4-5-20251001`, used for survey conversations), `CLAUDE_ANALYSIS_MODEL` (default: `claude-sonnet-4-6`, used for insights and analysis chat), `PORT` (default: 8000), `UNSPLASH_ACCESS_KEY` (optional, for images), `PEXELS_API_KEY` (optional, for videos).
+**Environment variables:** `DATABASE_URL`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` (if only this is set, OpenRouter becomes the default provider), `OPENROUTER_BASE_URL` (default `https://openrouter.ai/api/v1`; point at a mock for tests), `OPENROUTER_CHAT_MODEL` / `OPENROUTER_ANALYSIS_MODEL`, `OPENAI_API_KEY` / `POLLINATIONS_API_KEY` (server-wide image keys), `SECRET_KEY`, `ENCRYPTION_KEY` (Fernet key for stored API keys; auto-generated if unset, which invalidates stored keys on restart), `DEFAULT_ADMIN_USER`, `DEFAULT_ADMIN_PASS`, `CLAUDE_CHAT_MODEL` (default: `claude-haiku-4-5-20251001`), `CLAUDE_ANALYSIS_MODEL` (default: `claude-sonnet-4-6`), `APP_URL`, `MAX_UPLOAD_MB` (default 25), `PORT` (default: 8000), `UNSPLASH_ACCESS_KEY` (optional, stock photos), `PEXELS_API_KEY` (optional, videos).
+
+**Testing locally without API keys:** run an OpenAI-compatible mock on a local port and set `OPENROUTER_BASE_URL=http://127.0.0.1:9999/v1 OPENROUTER_API_KEY=test-key` with no `ANTHROPIC_API_KEY`; the app then routes chat, wizard, insights and image generation (`modalities: ["image"]`) through the mock.
 
 **Deployment:** Railway via Docker. Health check at `/api/health`. DB tables auto-created on startup with retry logic.
