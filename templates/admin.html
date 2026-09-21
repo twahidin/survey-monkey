@@ -6,28 +6,38 @@
     <title>Ponder · Teacher Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cpath fill=%27%232E2A72%27 d=%27M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z%27/%3E%3Ccircle cx=%2733%27 cy=%2731%27 r=%275.5%27 fill=%27%23F5A623%27/%3E%3C/svg%3E">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            --bg: #f4f6fa; --surface: #fff; --surface-2: #f8fafc;
-            --text: #0f172a; --text-2: #334155; --muted: #64748b;
-            --border: #e2e8f0; --border-2: #cbd5e1;
-            --primary: #1d4ed8; --primary-hover: #1e40af; --primary-soft: #dbeafe; --primary-ink: #1e3a8a;
-            --success: #16a34a; --danger: #dc2626; --warning: #d97706;
-            --radius: 14px; --radius-sm: 10px;
-            --shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+            --bg: #F5F0E8; --surface: #FFFDF9; --surface-2: #F8F4ED;
+            --text: #1F1D3A; --text-2: #43405F; --muted: #726E8A;
+            --border: #E7E0D4; --border-2: #D2CABC;
+            --primary: #2E2A72; --primary-hover: #241F5E; --primary-soft: #E7E4F6; --primary-ink: #1C1950;
+            --amber: #F5A623; --amber-soft: #FDECC8;
+            --success: #2E8B57; --danger: #C0392B; --warning: #C97C10;
+            --radius: 16px; --radius-sm: 11px;
+            --shadow: 0 1px 2px rgba(31,29,58,.05), 0 12px 32px rgba(31,29,58,.08);
+            --font-display: 'Fraunces', Georgia, serif;
         }
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; line-height: 1.5; }
         button, input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
         .hidden { display: none !important; }
         a { color: var(--primary); }
+        h1, h2 { font-family: var(--font-display); font-weight: 600; letter-spacing: -.012em; }
+        .logo { display: block; }
 
         /* Auth */
         .auth-wrapper { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
-        .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 36px 32px; width: 100%; max-width: 400px; box-shadow: var(--shadow); }
-        .brand-mark { width: 44px; height: 44px; border-radius: 12px; background: var(--primary); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; margin-bottom: 16px; }
-        .auth-card h1 { font-size: 1.4rem; margin-bottom: 4px; }
+        .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0; width: 100%; max-width: 900px; box-shadow: var(--shadow); display: grid; grid-template-columns: 1.1fr 1fr; overflow: hidden; }
+        .auth-art { background: #EFE6D9 url('/static/brand/hero.jpg') center / cover no-repeat; min-height: 420px; }
+        .auth-form { padding: 44px 40px; display: flex; flex-direction: column; justify-content: center; }
+        @media (max-width: 760px) { .auth-card { grid-template-columns: 1fr; } .auth-art { min-height: 180px; aspect-ratio: 16/9; background-image: url('/static/brand/hero-narrow.jpg'); } .auth-form { padding: 28px 22px; } }
+        .brand-mark { display: inline-flex; align-items: center; gap: 10px; color: var(--primary); margin-bottom: 16px; }
+        .brand-mark .logo { width: 40px; height: 40px; }
+        .brand-mark .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--text); letter-spacing: -.02em; }
+        .auth-card h1 { font-size: 1.6rem; margin-bottom: 4px; }
         .auth-card .sub { color: var(--muted); margin-bottom: 24px; font-size: .92rem; }
 
         /* Forms */
@@ -72,8 +82,8 @@
         .btn-danger.btn-outline:hover { background: #fef2f2; }
         .btn-success { background: var(--success); }
         .btn-sm { padding: 6px 12px; font-size: .82rem; }
-        .btn-ai { background: linear-gradient(135deg, #4f46e5, #7c3aed); }
-        .btn-ai:hover { background: linear-gradient(135deg, #4338ca, #6d28d9); }
+        .btn-ai { background: linear-gradient(135deg, #2E2A72, #5A4FB8); }
+        .btn-ai:hover { background: linear-gradient(135deg, #241F5E, #4A3FA5); }
         .error { color: var(--danger); margin-top: 8px; font-size: .82rem; min-height: 1.2em; }
         .link-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: .88rem; text-decoration: underline; }
         .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
@@ -83,8 +93,9 @@
 
         /* Layout */
         .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
-        .topbar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; }
-        .topbar .brand .mark { width: 32px; height: 32px; border-radius: 9px; background: var(--primary); color: #fff; display: flex; align-items: center; justify-content: center; }
+        .topbar .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; font-family: var(--font-display); font-size: 1.15rem; }
+        .topbar .brand .mark { width: 32px; height: 32px; color: var(--primary); }
+        .topbar .brand .mark .logo { width: 32px; height: 32px; }
         .topbar .user-info { display: flex; align-items: center; gap: 10px; }
         .main { max-width: 1140px; margin: 0 auto; padding: 28px 20px; }
 
@@ -105,7 +116,7 @@
         .badge-closed { background: #fee2e2; color: #991b1b; }
         .badge-draft { background: var(--primary-soft); color: var(--primary-ink); }
         .badge-completed { background: #dcfce7; color: #166534; }
-        .badge-abandoned { background: #fef3c7; color: #92400e; }
+        .badge-abandoned { background: var(--amber-soft); color: #7A4E00; }
         .stats-row { display: flex; gap: 18px; margin-top: 12px; }
         .stat .num { font-size: 1.15rem; font-weight: 700; }
         .stat .lbl { font-size: .72rem; color: var(--muted); }
@@ -225,7 +236,7 @@
         .step.done { border-top-color: #93c5fd; }
         .wstep { display: none; }
         .wstep.active { display: block; }
-        .ai-box { background: linear-gradient(135deg, #eef2ff, #f5f3ff); border: 1px solid #c7d2fe; border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 16px; }
+        .ai-box { background: linear-gradient(135deg, #EFEDFA, #FBF3E4); border: 1px solid #D9D3F0; border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 16px; }
         .ai-box .ai-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem; margin-bottom: 6px; }
         .ai-box .ai-desc { font-size: .8rem; color: var(--text-2); margin-bottom: 12px; }
         .ai-box .form-group { margin-bottom: 10px; }
@@ -249,8 +260,10 @@
 <!-- AUTH SCREEN -->
 <div id="auth-screen" class="auth-wrapper">
     <div class="auth-card">
-        <div class="brand-mark">P</div>
-        <h1>Ponder</h1>
+        <div class="auth-art" role="img" aria-label="Students thinking and talking around a table"></div>
+        <div class="auth-form">
+        <div class="brand-mark"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg><span class="wordmark">Ponder</span></div>
+        <h1>Teacher Studio</h1>
         <p class="sub">Sign in to design conversations and analyse responses</p>
         <div id="login-form">
             <div class="form-group"><label>Username</label><input id="auth-user" placeholder="admin" autocomplete="username"></div>
@@ -260,13 +273,14 @@
             <p style="margin-top:16px"><button class="link-btn" onclick="toggleAuthMode()">Create an account</button></p>
             <p style="margin-top:8px"><a class="link-btn" href="/register" style="font-size:.82rem">Have an invite code? Register as teacher</a></p>
         </div>
+        </div>
     </div>
 </div>
 
 <!-- DASHBOARD -->
 <div id="dashboard" class="hidden">
     <div class="topbar">
-        <div class="brand" onclick="showList()"><div class="mark">P</div><span>Ponder <span style="font-weight:500;color:var(--muted)">· Teacher Studio</span></span></div>
+        <div class="brand" onclick="showList()"><div class="mark"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg></div><span>Ponder <span style="font-weight:500;color:var(--muted);font-family:Inter,sans-serif;font-size:.9rem">· Teacher Studio</span></span></div>
         <div class="user-info">
             <span id="admin-name" style="font-size:.86rem;color:var(--muted)"></span>
             <button class="btn btn-sm btn-outline" onclick="openSettingsModal()">Settings</button>
@@ -933,7 +947,7 @@ async function createSurvey() {
 // ── Auth ──
 function toggleAuthMode() {
     isRegister = !isRegister;
-    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create account' : 'Ponder';
+    document.querySelector('.auth-card h1').textContent = isRegister ? 'Create account' : 'Teacher Studio';
     document.querySelector('.auth-card .sub').textContent = isRegister ? 'Register a new admin account' : 'Sign in to design conversations and analyse responses';
     document.querySelector('#login-form .btn').textContent = isRegister ? 'Register' : 'Sign In';
     document.querySelector('#login-form .btn').setAttribute('onclick', isRegister ? 'doRegister()' : 'doLogin()');

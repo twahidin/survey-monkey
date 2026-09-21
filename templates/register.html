@@ -4,37 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ponder · Teacher Registration</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cpath fill=%27%232E2A72%27 d=%27M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z%27/%3E%3Ccircle cx=%2733%27 cy=%2731%27 r=%275.5%27 fill=%27%23F5A623%27/%3E%3C/svg%3E">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            --glass: rgba(255,255,255,0.55);
-            --glass-border: rgba(255,255,255,0.3);
-            --blur: 20px;
-            --primary: #6366f1;
-            --primary-end: #8b5cf6;
-            --text: #1e1b4b;
-            --muted: #6b7280;
-            --border: rgba(255,255,255,0.35);
-            --danger: #ef4444;
+            --glass: #FFFDF9;
+            --glass-border: #E7E0D4;
+            --blur: 0px;
+            --primary: #2E2A72;
+            --primary-end: #5A4FB8;
+            --text: #1F1D3A;
+            --muted: #726E8A;
+            --border: #D2CABC;
+            --danger: #C0392B;
             --radius: 16px;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #e8f0fe 0%, #f0e6ff 50%, #e8f0fe 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #F5F0E8;
             color: var(--text); min-height: 100vh;
             display: flex; align-items: center; justify-content: center; padding: 16px;
         }
-        .orb { position: fixed; border-radius: 50%; filter: blur(80px); opacity: 0.35; pointer-events: none; z-index: 0; animation: float 20s ease-in-out infinite; }
-        .orb-1 { width: 400px; height: 400px; background: #c4b5fd; top: -100px; right: -100px; }
-        .orb-2 { width: 350px; height: 350px; background: #93c5fd; bottom: -80px; left: -80px; animation-delay: -7s; }
-        @keyframes float { 0%, 100% { transform: translate(0,0); } 50% { transform: translate(20px,-15px); } }
         .card {
             background: var(--glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur));
             border: 1px solid var(--glass-border); border-radius: var(--radius);
             padding: 40px 36px; width: 100%; max-width: 400px; text-align: center;
             box-shadow: 0 8px 32px rgba(99,102,241,0.08); position: relative; z-index: 1;
         }
-        .card h1 { font-size: 1.4rem; margin-bottom: 4px; }
+        .card h1 { font-family: Fraunces, Georgia, serif; font-size: 1.6rem; margin-bottom: 4px; }
+        .brand-mark { display: inline-flex; align-items: center; gap: 10px; color: var(--primary); margin-bottom: 14px; }
+        .brand-mark .logo { width: 40px; height: 40px; display: block; }
+        .brand-mark .wordmark { font-family: Fraunces, Georgia, serif; font-weight: 700; font-size: 1.35rem; color: var(--text); }
         .card .sub { color: var(--muted); margin-bottom: 28px; font-size: 0.9rem; }
         .form-group { margin-bottom: 16px; text-align: left; }
         .form-group label { font-size: 0.82rem; font-weight: 600; display: block; margin-bottom: 4px; }
@@ -58,11 +59,10 @@
     </style>
 </head>
 <body>
-<div class="orb orb-1"></div>
-<div class="orb orb-2"></div>
 
 <div class="card">
-    <h1>Teacher Registration</h1>
+    <div class="brand-mark"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg><span class="wordmark">Ponder</span></div>
+        <h1>Teacher Registration</h1>
     <p class="sub">Create your teacher account with an invite code</p>
     <div id="register-form">
         <div class="form-group">

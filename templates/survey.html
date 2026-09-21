@@ -3,32 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#2E2A72">
     <title>Ponder</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Cpath fill=%27%232E2A72%27 d=%27M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z%27/%3E%3Ccircle cx=%2733%27 cy=%2731%27 r=%275.5%27 fill=%27%23F5A623%27/%3E%3C/svg%3E">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root {
-            --bg: #f4f6fa;
-            --surface: #ffffff;
-            --surface-2: #f8fafc;
-            --text: #0f172a;
-            --text-2: #334155;
-            --muted: #64748b;
-            --border: #e2e8f0;
-            --border-2: #cbd5e1;
-            --accent: #1d4ed8;
-            --accent-hover: #1e40af;
-            --accent-soft: #dbeafe;
-            --accent-ink: #1e3a8a;
-            --danger: #dc2626;
-            --success: #16a34a;
-            --radius: 14px;
-            --radius-sm: 10px;
-            --shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+            --bg: #F5F0E8;
+            --surface: #FFFDF9;
+            --surface-2: #F8F4ED;
+            --text: #1F1D3A;
+            --text-2: #43405F;
+            --muted: #726E8A;
+            --border: #E7E0D4;
+            --border-2: #D2CABC;
+            --accent: #2E2A72;
+            --accent-hover: #241F5E;
+            --accent-soft: #E7E4F6;
+            --accent-ink: #1C1950;
+            --amber: #F5A623;
+            --amber-soft: #FDECC8;
+            --danger: #C0392B;
+            --success: #2E8B57;
+            --radius: 16px;
+            --radius-sm: 11px;
+            --shadow: 0 1px 2px rgba(31,29,58,.05), 0 12px 32px rgba(31,29,58,.08);
             --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
             --topbar-h: 60px;
         }
         html, body { height: 100%; }
@@ -39,6 +43,8 @@
         }
         button, input, textarea { font-family: inherit; font-size: inherit; }
         .hidden { display: none !important; }
+        h1, h2, .display { font-family: var(--font-display); font-weight: 600; letter-spacing: -.012em; }
+        .logo { display: block; }
 
         /* ── Generic ── */
         .btn {
@@ -66,12 +72,20 @@
             background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
             box-shadow: var(--shadow); width: 100%; max-width: 440px; padding: 36px 32px;
         }
-        .brand-mark {
-            width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: #fff;
-            display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem;
-            margin-bottom: 18px;
+        .brand-mark { display: inline-flex; align-items: center; gap: 10px; color: var(--accent); margin-bottom: 18px; }
+        .brand-mark .logo { width: 40px; height: 40px; }
+        .brand-mark .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--text); letter-spacing: -.02em; }
+        .card h1 { font-size: 1.7rem; margin-bottom: 6px; }
+        /* Welcome layout with illustration */
+        #join-screen .card { max-width: 960px; padding: 0; overflow: hidden; display: grid; grid-template-columns: 1.15fr 1fr; }
+        .join-art { background: #EFE6D9 url('/static/brand/hero.jpg') center / cover no-repeat; min-height: 420px; }
+        .join-form { padding: 44px 40px; display: flex; flex-direction: column; justify-content: center; }
+        .join-form .tag { display: inline-block; align-self: flex-start; background: var(--amber-soft); color: #7A4E00; font-size: .74rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 14px; }
+        @media (max-width: 760px) {
+            #join-screen .card { grid-template-columns: 1fr; }
+            .join-art { min-height: 200px; aspect-ratio: 16/9; background-image: url('/static/brand/hero-narrow.jpg'); }
+            .join-form { padding: 28px 22px 30px; }
         }
-        .card h1 { font-size: 1.45rem; font-weight: 700; letter-spacing: -.01em; margin-bottom: 6px; }
         .card p.lead { color: var(--muted); font-size: .95rem; margin-bottom: 22px; }
         .field { margin-bottom: 14px; text-align: left; }
         .field label { display: block; font-size: .82rem; font-weight: 600; color: var(--text-2); margin-bottom: 6px; }
@@ -118,13 +132,14 @@
             background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
         }
         .topbar .brand { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
-        .topbar .brand .mark { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .topbar .brand .mark { width: 34px; height: 34px; color: var(--accent); flex-shrink: 0; }
+        .topbar .brand .mark .logo { width: 34px; height: 34px; }
         .topbar .brand .t { min-width: 0; }
         .topbar .brand .title { font-weight: 600; font-size: .96rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .topbar .brand .sub { font-size: .76rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .progress { display: flex; align-items: center; gap: 10px; }
         .progress .bar { width: 120px; height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; }
-        .progress .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+        .progress .bar span { display: block; height: 100%; width: 0; background: var(--amber); transition: width .3s; }
         .progress .count { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
         .topbar .actions { display: flex; gap: 8px; }
         @media (max-width: 640px) {
@@ -172,7 +187,8 @@
         .messages { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 24px 12px; display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth; }
         .msg-row { display: flex; gap: 10px; max-width: 86%; }
         .msg-row.user { align-self: flex-end; flex-direction: row-reverse; }
-        .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: .7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+        .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+        .avatar .logo { width: 20px; height: 20px; }
         .msg { padding: 11px 15px; border-radius: 16px; font-size: .95rem; line-height: 1.55; word-wrap: break-word; overflow-wrap: anywhere; }
         .msg.assistant { background: var(--surface-2); border: 1px solid var(--border); border-top-left-radius: 6px; color: var(--text); white-space: pre-wrap; }
         .msg.user { background: var(--accent); color: #fff; border-top-right-radius: 6px; white-space: pre-wrap; }
@@ -234,7 +250,7 @@
         .modal .close { background: none; border: 1px solid var(--border-2); border-radius: 8px; width: 34px; height: 34px; cursor: pointer; font-size: 1.1rem; color: var(--text-2); }
 
         /* Complete */
-        .check { width: 64px; height: 64px; border-radius: 50%; background: #dcfce7; color: var(--success); display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
+        .check { width: 64px; height: 64px; border-radius: 50%; background: var(--amber-soft); color: #B7791F; display: flex; align-items: center; justify-content: center; margin-bottom: 18px; }
         .check svg { width: 30px; height: 30px; stroke: currentColor; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 50; stroke-dashoffset: 50; animation: draw .5s .2s ease forwards; }
         @keyframes draw { to { stroke-dashoffset: 0; } }
     </style>
@@ -244,12 +260,16 @@
 <!-- Join -->
 <div id="join-screen" class="screen">
     <div class="card">
-        <div class="brand-mark">P</div>
-        <h1>Welcome</h1>
-        <p class="lead">Enter the access code your teacher shared to begin.</p>
-        <input class="code-input" id="code-input" maxlength="12" placeholder="ABC123" autocomplete="off" autocapitalize="characters" spellcheck="false">
-        <button class="btn btn-lg" id="join-btn" onclick="joinSurvey()">Continue</button>
-        <div class="error-msg" id="join-error"></div>
+        <div class="join-art" role="img" aria-label="Students thinking and talking around a table"></div>
+        <div class="join-form">
+            <div class="brand-mark"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg><span class="wordmark">Ponder</span></div>
+            <span class="tag">Think it through, together</span>
+            <h1>Welcome</h1>
+            <p class="lead">Enter the access code your teacher shared to begin.</p>
+            <input class="code-input" id="code-input" maxlength="12" placeholder="ABC123" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <button class="btn btn-lg" id="join-btn" onclick="joinSurvey()">Continue</button>
+            <div class="error-msg" id="join-error"></div>
+        </div>
     </div>
 </div>
 
@@ -290,7 +310,7 @@
 <div id="chat-screen">
     <header class="topbar">
         <div class="brand">
-            <div class="mark">P</div>
+            <div class="mark"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg></div>
             <div class="t">
                 <div class="title" id="survey-title">Survey</div>
                 <div class="sub" id="survey-topic"></div>
@@ -433,7 +453,7 @@ function addMessage(role, content) {
     if (role === 'assistant') {
         const av = document.createElement('div');
         av.className = 'avatar';
-        av.textContent = 'AI';
+        av.innerHTML = '<svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg>';
         row.appendChild(av);
     }
     const el = document.createElement('div');
@@ -457,7 +477,7 @@ function showTyping() {
     const row = document.createElement('div');
     row.className = 'msg-row';
     row.id = 'typing-ind';
-    row.innerHTML = '<div class="avatar">AI</div><div class="msg assistant typing"><span></span><span></span><span></span></div>';
+    row.innerHTML = '<div class="avatar"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M12 30C12 19 21 10 32 10h2c11 0 20 9 20 20v2c0 11-9 20-20 20H20c-4 0-7 3-8 6z"/><circle cx="33" cy="31" r="5.5" fill="#F5A623"/></svg></div><div class="msg assistant typing"><span></span><span></span><span></span></div>';
     msgs.appendChild(row);
     row.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
