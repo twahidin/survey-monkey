@@ -31,9 +31,9 @@
         /* Auth */
         .auth-wrapper { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
         .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0; width: 100%; max-width: 900px; box-shadow: var(--shadow); display: grid; grid-template-columns: 1.1fr 1fr; overflow: hidden; }
-        .auth-art { background: #EFE6D9 url('/static/brand/hero.jpg') center / cover no-repeat; min-height: 420px; }
+        .auth-art { background: #EFE6D9 url('/static/brand/hero-narrow.jpg') 40% 50% / cover no-repeat; min-height: 440px; }
         .auth-form { padding: 44px 40px; display: flex; flex-direction: column; justify-content: center; }
-        @media (max-width: 760px) { .auth-card { grid-template-columns: 1fr; } .auth-art { min-height: 180px; aspect-ratio: 16/9; background-image: url('/static/brand/hero-narrow.jpg'); } .auth-form { padding: 28px 22px; } }
+        @media (max-width: 760px) { .auth-card { grid-template-columns: 1fr; } .auth-art { min-height: 180px; aspect-ratio: 16/9; background-image: url('/static/brand/hero.jpg'); background-position: center; } .auth-form { padding: 28px 22px; } }
         .brand-mark { display: inline-flex; align-items: center; gap: 10px; color: var(--primary); margin-bottom: 16px; }
         .brand-mark .logo { width: 40px; height: 40px; }
         .brand-mark .wordmark { font-family: var(--font-display); font-weight: 700; font-size: 1.35rem; color: var(--text); letter-spacing: -.02em; }

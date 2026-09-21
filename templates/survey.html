@@ -78,12 +78,12 @@
         .card h1 { font-size: 1.7rem; margin-bottom: 6px; }
         /* Welcome layout with illustration */
         #join-screen .card { max-width: 960px; padding: 0; overflow: hidden; display: grid; grid-template-columns: 1.15fr 1fr; }
-        .join-art { background: #EFE6D9 url('/static/brand/hero.jpg') center / cover no-repeat; min-height: 420px; }
+        .join-art { background: #EFE6D9 url('/static/brand/hero-narrow.jpg') 40% 50% / cover no-repeat; min-height: 440px; }
         .join-form { padding: 44px 40px; display: flex; flex-direction: column; justify-content: center; }
         .join-form .tag { display: inline-block; align-self: flex-start; background: var(--amber-soft); color: #7A4E00; font-size: .74rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; margin-bottom: 14px; }
         @media (max-width: 760px) {
             #join-screen .card { grid-template-columns: 1fr; }
-            .join-art { min-height: 200px; aspect-ratio: 16/9; background-image: url('/static/brand/hero-narrow.jpg'); }
+            .join-art { min-height: 200px; aspect-ratio: 16/9; background-image: url('/static/brand/hero.jpg'); background-position: center; }
             .join-form { padding: 28px 22px 30px; }
         }
         .card p.lead { color: var(--muted); font-size: .95rem; margin-bottom: 22px; }
