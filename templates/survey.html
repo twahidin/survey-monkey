@@ -212,6 +212,51 @@
         .option.submit { background: var(--text); color: #fff; border-color: var(--text); }
         .option.submit:hover:not(:disabled) { background: #1e293b; color: #fff; }
 
+        /* Interactive checks */
+        .ix { margin-left: 40px; max-width: 86%; background: #fff; border: 1px solid var(--border-2); border-radius: 16px; padding: 14px 16px; box-shadow: 0 2px 10px rgba(31,29,58,.05); }
+        .ix .ix-kind { font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+        .ix .ix-q { font-weight: 600; color: var(--text); margin-bottom: 10px; line-height: 1.4; }
+        .ix .ix-opts { display: flex; flex-direction: column; gap: 8px; }
+        .ix .ix-opt { text-align: left; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border-2); background: var(--surface); color: var(--text-2); font-size: .92rem; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; transition: all .12s; }
+        .ix .ix-opt .k { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-2); display: inline-flex; align-items: center; justify-content: center; font-size: .74rem; font-weight: 700; color: var(--muted); }
+        .ix .ix-opt:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+        .ix .ix-opt:disabled { cursor: default; }
+        .ix .ix-opt.right { border-color: var(--success); background: #E9F5EE; color: #1F5E3A; }
+        .ix .ix-opt.right .k { background: var(--success); color: #fff; border-color: var(--success); }
+        .ix .ix-opt.wrong { border-color: var(--danger); background: #FBEAE7; color: #7D2419; }
+        .ix .ix-opt.wrong .k { background: var(--danger); color: #fff; border-color: var(--danger); }
+        .ix .ix-blank { display: inline-block; width: 8.5em; max-width: 60%; margin: 0 3px; padding: 4px 8px; border: none; border-bottom: 2px solid var(--accent); background: var(--accent-soft); border-radius: 6px 6px 0 0; font: inherit; font-size: .92rem; color: var(--text); }
+        .ix .ix-blank.right { border-bottom-color: var(--success); background: #E9F5EE; }
+        .ix .ix-blank.wrong { border-bottom-color: var(--danger); background: #FBEAE7; }
+        .ix .ix-text { line-height: 2.1; font-size: .95rem; color: var(--text-2); }
+        .ix .ix-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+        .ix .ix-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border-2); border-radius: 10px; background: var(--surface); font-size: .92rem; }
+        .ix .ix-list li .n { width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: .74rem; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .ix .ix-list li .lbl { flex: 1; }
+        .ix .ix-list li .mv { border: 1px solid var(--border-2); background: #fff; border-radius: 8px; width: 30px; height: 28px; cursor: pointer; color: var(--text-2); font-size: .8rem; }
+        .ix .ix-list li .mv:disabled { opacity: .35; cursor: default; }
+        .ix .ix-list li.right { border-color: var(--success); background: #E9F5EE; }
+        .ix .ix-list li.wrong { border-color: var(--danger); background: #FBEAE7; }
+        .ix .ix-match { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; }
+        .ix .ix-match .l { font-size: .92rem; color: var(--text-2); padding: 6px 0; }
+        .ix .ix-match select { font: inherit; font-size: .88rem; padding: 7px 10px; border: 1px solid var(--border-2); border-radius: 10px; background: #fff; color: var(--text); max-width: 46vw; }
+        .ix .ix-match select.right { border-color: var(--success); background: #E9F5EE; }
+        .ix .ix-match select.wrong { border-color: var(--danger); background: #FBEAE7; }
+        .ix .ix-scale { padding: 6px 2px; }
+        .ix .ix-scale input[type=range] { width: 100%; accent-color: var(--accent); }
+        .ix .ix-scale .ends { display: flex; justify-content: space-between; font-size: .78rem; color: var(--muted); margin-top: 2px; }
+        .ix .ix-scale .val { text-align: center; font-family: 'Fraunces', serif; font-size: 1.5rem; color: var(--accent); margin: 4px 0; }
+        .ix .ix-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+        .ix .ix-btn { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent); color: #fff; font-weight: 600; font-size: .88rem; cursor: pointer; }
+        .ix .ix-btn:disabled { opacity: .5; cursor: default; }
+        .ix .ix-btn.ghost { background: transparent; color: var(--accent); }
+        .ix .ix-fb { margin-top: 10px; font-size: .88rem; line-height: 1.5; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); color: var(--text-2); }
+        .ix .ix-fb.right { background: #E9F5EE; color: #1F5E3A; }
+        .ix .ix-fb.wrong { background: #FBEAE7; color: #7D2419; }
+        .ix .ix-hint { font-size: .84rem; color: var(--muted); margin-top: 8px; }
+        .ix.done { opacity: .92; }
+        .visual-slide-tag { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border-radius: 999px; padding: 2px 9px; margin-right: 8px; vertical-align: middle; }
+
         .composer { flex-shrink: 0; padding: 12px 20px 16px; border-top: 1px solid var(--border); background: var(--surface); }
         .composer-inner { display: flex; align-items: flex-end; gap: 10px; border: 1px solid var(--border-2); border-radius: 14px; padding: 8px 8px 8px 14px; background: #fff; transition: border-color .15s, box-shadow .15s; }
         .composer-inner:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -235,6 +280,7 @@
             .messages { padding: 16px 14px 8px; }
             .msg-row { max-width: 92%; }
             .options { margin-left: 0; max-width: 100%; }
+            .ix { margin-left: 0; max-width: 100%; }
             .composer { padding: 10px 12px 12px; }
             .composer .hint { display: none; }
         }
@@ -534,7 +580,14 @@ function renderMediaAt(idx) {
         if (data.poster) vid.poster = data.poster;
         stage.insertBefore(vid, ph);
     }
-    document.getElementById('visual-caption').textContent = data.caption || '';
+    const capEl = document.getElementById('visual-caption');
+    capEl.textContent = '';
+    if (data.slide) {
+        const tag = document.createElement('span'); tag.className = 'visual-slide-tag';
+        tag.textContent = `Slide ${data.slide}${data.slide_total ? ' of ' + data.slide_total : ''}`;
+        capEl.appendChild(tag);
+    }
+    capEl.appendChild(document.createTextNode(data.caption || ''));
     renderThumbs();
 }
 
@@ -545,7 +598,7 @@ function renderThumbs() {
     mediaHistory.forEach((m, i) => {
         const b = document.createElement('button');
         b.className = i === activeMediaIdx ? 'active' : '';
-        b.title = m.caption || m.alt || '';
+        b.title = m.slide ? `Slide ${m.slide}` + (m.caption ? ' · ' + m.caption : '') : (m.caption || m.alt || '');
         if (m.type === 'image') { const im = document.createElement('img'); im.src = m.url; im.alt = ''; b.appendChild(im); }
         else { b.innerHTML = '<span class="vid">Video</span>'; }
         b.onclick = () => renderMediaAt(i);
@@ -620,6 +673,138 @@ function sendButtonResponse(value) {
     userMsgCount++;
     updateProgress();
     doStreamRequest(value);
+}
+
+// ── Interactive checks (mcq, fill_blank, order, match, scale) ──
+const IX_LABELS = { mcq: 'Quick check', fill_blank: 'Fill in the blanks', order: 'Put in order', match: 'Match the pairs', scale: 'How confident are you?' };
+function normAns(s) { return String(s || '').trim().toLowerCase().replace(/[.,;:!?'"()]/g, '').replace(/\s+/g, ' '); }
+function shuffled(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function renderInteractive(data, disabled) {
+    const msgs = document.getElementById('messages');
+    const card = el('div', 'ix' + (disabled ? ' done' : ''));
+    card.appendChild(el('div', 'ix-kind', IX_LABELS[data.kind] || 'Interactive'));
+    card.appendChild(el('div', 'ix-q', data.question || ''));
+    const body = el('div'); card.appendChild(body);
+    const foot = el('div', 'ix-foot'); card.appendChild(foot);
+    let finished = false;
+    const finish = (summary, fbText, ok) => {
+        if (finished) return; finished = true;
+        card.classList.add('done');
+        card.querySelectorAll('button, input, select').forEach(x => x.disabled = true);
+        if (fbText) { const fb = el('div', 'ix-fb' + (ok === true ? ' right' : ok === false ? ' wrong' : ''), fbText); card.appendChild(fb); }
+        sendButtonResponse(summary);
+    };
+    const addHint = () => {
+        if (!data.hint || disabled) return;
+        const hb = el('button', 'ix-btn ghost', 'Show a hint');
+        hb.onclick = () => { hb.remove(); card.appendChild(el('div', 'ix-hint', 'Hint: ' + data.hint)); };
+        foot.appendChild(hb);
+    };
+
+    if (data.kind === 'mcq') {
+        const wrap = el('div', 'ix-opts'); body.appendChild(wrap);
+        (data.options || []).forEach((opt, i) => {
+            const b = el('button', 'ix-opt'); b.type = 'button';
+            b.appendChild(el('span', 'k', String.fromCharCode(65 + i))); b.appendChild(el('span', null, opt));
+            b.disabled = !!disabled;
+            b.onclick = () => {
+                const known = typeof data.correct === 'number';
+                const ok = known ? i === data.correct : null;
+                if (known) { b.classList.add(ok ? 'right' : 'wrong'); if (!ok) wrap.children[data.correct].classList.add('right'); }
+                else b.classList.add('right');
+                const fb = known ? ((ok ? 'Correct. ' : 'Not quite. ') + (data.explanation || '')) : (data.explanation || '');
+                finish(`[Interactive · multiple choice] "${data.question}" — I chose ${String.fromCharCode(65 + i)}: ${opt}` + (known ? (ok ? ' (correct)' : ` (incorrect; the correct answer was ${String.fromCharCode(65 + data.correct)}: ${data.options[data.correct]})`) : ''), fb.trim(), ok);
+            };
+            wrap.appendChild(b);
+        });
+        addHint();
+    } else if (data.kind === 'fill_blank') {
+        const t = el('div', 'ix-text'); body.appendChild(t);
+        const parts = String(data.text || '').split('___');
+        const inputs = [];
+        parts.forEach((part, i) => {
+            t.appendChild(document.createTextNode(part));
+            if (i < parts.length - 1) {
+                const inp = el('input', 'ix-blank'); inp.type = 'text'; inp.placeholder = '…'; inp.autocomplete = 'off'; inp.disabled = !!disabled;
+                inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); check.click(); } };
+                t.appendChild(inp); inputs.push(inp);
+            }
+        });
+        const check = el('button', 'ix-btn', 'Check'); check.type = 'button'; check.disabled = !!disabled;
+        check.onclick = () => {
+            if (inputs.some(x => !x.value.trim())) { inputs.find(x => !x.value.trim()).focus(); return; }
+            let right = 0;
+            const results = inputs.map((inp, i) => {
+                const accepted = String((data.answers || [])[i] || '').split('|').map(normAns).filter(Boolean);
+                const ok = accepted.length ? accepted.includes(normAns(inp.value)) : true;
+                inp.classList.add(ok ? 'right' : 'wrong'); if (ok) right++;
+                return `${inp.value.trim()}${ok ? ' ✓' : ' ✗ (expected: ' + String((data.answers || [])[i] || '').split('|')[0] + ')'}`;
+            });
+            const allOk = right === inputs.length;
+            finish(`[Interactive · fill in the blanks] "${data.question}" — my answers: ${results.join('; ')} (${right}/${inputs.length} correct)`,
+                ((allOk ? 'All correct. ' : right ? 'Partly right. ' : 'Not quite. ') + (data.explanation || '')).trim(), allOk ? true : right ? null : false);
+        };
+        foot.appendChild(check); addHint();
+        if (!disabled) setTimeout(() => inputs[0] && inputs[0].focus(), 50);
+    } else if (data.kind === 'order') {
+        const list = el('ul', 'ix-list'); body.appendChild(list);
+        let current = shuffled(data.items || []);
+        if (current.join('|') === (data.items || []).join('|') && current.length > 1) current = current.slice(1).concat(current[0]);
+        const draw = () => {
+            list.innerHTML = '';
+            current.forEach((item, i) => {
+                const li = el('li'); li.appendChild(el('span', 'n', String(i + 1))); li.appendChild(el('span', 'lbl', item));
+                const up = el('button', 'mv', '▲'); up.type = 'button'; up.disabled = disabled || i === 0; up.setAttribute('aria-label', 'Move up');
+                up.onclick = () => { [current[i - 1], current[i]] = [current[i], current[i - 1]]; draw(); };
+                const dn = el('button', 'mv', '▼'); dn.type = 'button'; dn.disabled = disabled || i === current.length - 1; dn.setAttribute('aria-label', 'Move down');
+                dn.onclick = () => { [current[i + 1], current[i]] = [current[i], current[i + 1]]; draw(); };
+                li.appendChild(up); li.appendChild(dn); list.appendChild(li);
+            });
+        };
+        draw();
+        const check = el('button', 'ix-btn', 'Check order'); check.type = 'button'; check.disabled = !!disabled;
+        check.onclick = () => {
+            let right = 0;
+            Array.from(list.children).forEach((li, i) => { const ok = current[i] === data.items[i]; li.classList.add(ok ? 'right' : 'wrong'); if (ok) right++; });
+            const allOk = right === current.length;
+            finish(`[Interactive · put in order] "${data.question}" — my order: ${current.join(' → ')} (${right}/${current.length} in the right place${allOk ? '' : '; correct order: ' + data.items.join(' → ')})`,
+                ((allOk ? 'Correct order. ' : 'Not quite. ') + (data.explanation || '')).trim(), allOk);
+        };
+        foot.appendChild(check); addHint();
+    } else if (data.kind === 'match') {
+        const grid = el('div', 'ix-match'); body.appendChild(grid);
+        const rights = shuffled((data.pairs || []).map(p => p.right));
+        const selects = (data.pairs || []).map(p => {
+            grid.appendChild(el('div', 'l', p.left));
+            const sel = el('select'); sel.disabled = !!disabled;
+            const ph = el('option', null, 'Choose…'); ph.value = ''; sel.appendChild(ph);
+            rights.forEach(r => { const o = el('option', null, r); o.value = r; sel.appendChild(o); });
+            grid.appendChild(sel); return sel;
+        });
+        const check = el('button', 'ix-btn', 'Check matches'); check.type = 'button'; check.disabled = !!disabled;
+        check.onclick = () => {
+            if (selects.some(x => !x.value)) { selects.find(x => !x.value).focus(); return; }
+            let right = 0;
+            const res = selects.map((sel, i) => { const ok = sel.value === data.pairs[i].right; sel.classList.add(ok ? 'right' : 'wrong'); if (ok) right++; return `${data.pairs[i].left} → ${sel.value}${ok ? ' ✓' : ' ✗'}`; });
+            const allOk = right === selects.length;
+            finish(`[Interactive · match the pairs] "${data.question}" — ${res.join('; ')} (${right}/${selects.length} correct)`,
+                ((allOk ? 'All matched. ' : 'Some matches are off. ') + (data.explanation || '')).trim(), allOk ? true : right ? null : false);
+        };
+        foot.appendChild(check); addHint();
+    } else if (data.kind === 'scale') {
+        const wrap = el('div', 'ix-scale'); body.appendChild(wrap);
+        const val = el('div', 'val', '3'); wrap.appendChild(val);
+        const range = el('input'); range.type = 'range'; range.min = 1; range.max = 5; range.value = 3; range.step = 1; range.disabled = !!disabled;
+        range.oninput = () => val.textContent = range.value; wrap.appendChild(range);
+        const ends = el('div', 'ends'); ends.appendChild(el('span', null, data.min_label || 'Not at all')); ends.appendChild(el('span', null, data.max_label || 'Completely')); wrap.appendChild(ends);
+        const ok = el('button', 'ix-btn', 'Submit'); ok.type = 'button'; ok.disabled = !!disabled;
+        ok.onclick = () => finish(`[Interactive · scale] "${data.question}" — ${range.value} out of 5 (1 = ${data.min_label || 'not at all'}, 5 = ${data.max_label || 'completely'})`, data.explanation || '', null);
+        foot.appendChild(ok);
+    }
+    msgs.appendChild(card);
+    card.scrollIntoView({ behavior: 'smooth', block: 'end' });
 }
 
 // ── Briefing ──
@@ -723,6 +908,7 @@ function startChat() {
     (pendingOpeningEvents || []).forEach(ev => {
         if (ev.t === 'media') showMedia(ev);
         else if (ev.t === 'buttons') renderButtons(ev);
+        else if (ev.t === 'interactive') renderInteractive(ev);
     });
     pendingOpeningMessage = null; pendingOpeningEvents = null;
     setTimeout(() => document.getElementById('chat-input').focus(), 200);
@@ -796,6 +982,7 @@ async function doStreamRequest(text) {
                 streamEl.parentElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
             } else if (data.t === 'media') showMedia(data);
             else if (data.t === 'buttons') { if (streamEl && hasText) streamEl.innerHTML = renderMd(streamEl.textContent); renderButtons(data); }
+            else if (data.t === 'interactive') { if (streamEl && hasText) streamEl.innerHTML = renderMd(streamEl.textContent); renderInteractive(data); }
             else if (data.t === 'status') setVisualStatus(data.v || '');
             else if (data.t === 'done') { if (data.is_complete) completed = true; }
             else if (data.t === 'error') { hideTyping(); addMessage('system', data.v || 'Something went wrong'); }
@@ -886,6 +1073,7 @@ function replayToolEvents(content) {
         for (const ev of events) {
             if (ev.t === 'media') showMedia(ev, true);
             else if (ev.t === 'buttons') renderButtons(ev, true);
+            else if (ev.t === 'interactive') renderInteractive(ev, true);
         }
     } catch (_) {}
 }

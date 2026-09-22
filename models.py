@@ -186,10 +186,12 @@ class MediaAsset(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     survey_id = Column(UUID(as_uuid=True), ForeignKey("surveys.id", ondelete="CASCADE"), nullable=True, index=True)
     participant_id = Column(UUID(as_uuid=True), ForeignKey("participants.id", ondelete="CASCADE"), nullable=True, index=True)
-    kind = Column(String(20), nullable=False)          # generated | briefing
+    kind = Column(String(20), nullable=False)          # generated | briefing | slide
     mime_type = Column(String(100), nullable=False)
     filename = Column(String(255), nullable=True)
     prompt = Column(Text, nullable=True)               # generation prompt, if any
+    page_index = Column(Integer, nullable=True)        # 1-based slide number for kind="slide"
+    text_content = Column(Text, nullable=True)         # extracted slide text for kind="slide"
     data = Column(LargeBinary, nullable=False)
     size_bytes = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

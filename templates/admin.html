@@ -177,6 +177,12 @@
         .convo-media { max-width: 60%; align-self: flex-start; }
         .convo-media img { max-width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; }
         .convo-media .cap { font-size: .76rem; color: var(--muted); margin-top: 3px; }
+        .convo-ix { align-self: flex-start; max-width: 80%; font-size: .8rem; color: var(--text-2); background: var(--primary-soft); border-radius: 10px; padding: 8px 12px; }
+        .convo-ix b { color: var(--primary-ink); }
+        .slide-strip { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0 4px; }
+        .slide-strip a { flex-shrink: 0; width: 120px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #fff; text-decoration: none; color: var(--muted); font-size: .72rem; text-align: center; }
+        .slide-strip img { width: 100%; height: 68px; object-fit: cover; display: block; }
+        .slide-strip span { display: block; padding: 3px 0; }
         .convo-opts { display: flex; gap: 6px; flex-wrap: wrap; align-self: flex-start; }
         .convo-opts span { border: 1px solid var(--border-2); border-radius: 99px; padding: 2px 10px; font-size: .78rem; color: var(--text-2); background: #fff; }
 
@@ -571,6 +577,7 @@ const SURVEY_TYPE_CONFIG = {
     depth_survey: { label: 'Depth survey', description: 'Reflective conversation to understand deeper perspectives.', instructionsTemplate: 'Take your time. Ask probing follow-ups, explore motivations, encourage deep reflection.' },
     formative_assessment: { label: 'Formative assessment', description: 'Check understanding of a topic and surface misconceptions without giving away answers.', instructionsTemplate: 'Probe reasoning with why/how follow-ups. Never reveal the answer; give at most one hint, then move on. Stay encouraging.' },
     reflection: { label: 'Reflection', description: 'Guide participants to reflect on a task or experience: what they did, learned, found hard, and would change.', instructionsTemplate: 'Use open questions. Give space to think. Help the participant name one concrete thing to do differently next time.' },
+    guided_learning: { label: 'Guided learning (walk through slides)', description: 'For participants who find the material hard: the chatbot shows each slide, explains it simply, then checks understanding with an MCQ, a short answer and a longer answer, re-showing the slide when they get stuck. Upload the deck as a PDF or PowerPoint in the Briefing step.', instructionsTemplate: 'Go through the deck in order, one idea at a time. For each idea: show the slide, explain it in 2-3 simple sentences, then ask an MCQ (show_interactive), then a short written answer, then "explain it in your own words". If an answer is wrong, show the slide again, point to the relevant part, give one hint and retry once. Keep language simple and encouraging. Close with a summary of what they mastered and what to revisit.' },
 };
 const IMAGE_MODE_INFO = {
     none: ['No visuals', 'Chat only. The visual panel stays hidden.'],
@@ -580,7 +587,7 @@ const IMAGE_MODE_INFO = {
 const BRIEFING_TYPES = [
     ['none', 'No briefing', 'Start the conversation straight away.'],
     ['link', 'Link to slides or video', 'YouTube, Vimeo, Google Slides, Canva, a PDF URL or any web page.'],
-    ['upload', 'Upload a file', 'PDF, PowerPoint, image or MP4 (max 25 MB), stored with the survey.'],
+    ['upload', 'Upload a file', 'PDF or PowerPoint decks are split into slides the chatbot can show and discuss one at a time. Images and MP4 also supported (max 25 MB).'],
 ];
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -621,7 +628,8 @@ function buildSurveyForm(p) {
             </div>
             <div id="${p}-briefing-upload" class="hidden">
                 <div class="file-drop"><div id="${p}-briefing-file-status">Choose a PDF, PowerPoint, image or MP4 video.</div><input type="file" id="${p}-briefing-file" accept=".pdf,.pptx,.ppt,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm" onchange="onBriefingFileChange('${p}')"></div>
-                <div class="help" style="margin-top:6px">PowerPoint files are shown through Microsoft's online viewer; PDFs display natively. Convert PowerPoint to PDF for the most reliable display.</div>
+                <div class="help" style="margin-top:6px">Decks (PDF or PowerPoint) are split into per-slide images and text. The chatbot reads the slide text, can show any slide in the visual panel with <b>show_slide</b>, and re-shows it when a participant struggles. PowerPoint files are also shown through Microsoft's online viewer in the briefing; convert to PDF for the most reliable display.</div>
+                <div class="slide-strip hidden" id="${p}-slide-strip"></div>
             </div>
             <div class="form-group" style="margin-top:12px"><label>Briefing title <span>(optional)</span></label><input id="${p}-briefing-title" placeholder="e.g. Watch: the road to war (4 min)"></div>
             <div class="form-group"><label>Task description <span>(shown next to the media, and given to the chatbot as context)</span></label><textarea id="${p}-briefing-text" rows="5" placeholder="Explain the task, why it matters and what the participant should do."></textarea></div>
@@ -795,7 +803,9 @@ function fillForm(p, s) {
     const isUpload = bt !== 'none' && (s.briefing_url || '').startsWith('/api/assets/');
     setBriefingMode(p, bt === 'none' ? 'none' : isUpload ? 'upload' : 'link');
     $(`${p}-briefing-url`).value = isUpload ? '' : (s.briefing_url || '');
-    $(`${p}-briefing-file-status`).innerHTML = isUpload ? `Current file: <a href="${esc(s.briefing_url)}" target="_blank">open</a> (${esc(bt)}). Choose another file to replace it.` : 'Choose a PDF, PowerPoint, image or MP4 video.';
+    $(`${p}-briefing-file-status`).innerHTML = isUpload ? `Current file: <a href="${esc(s.briefing_url)}" target="_blank">open</a> (${esc(bt)})${s.slide_count ? ` · <b>${s.slide_count} slides</b> ready for the chatbot` : (bt === 'slides' || bt === 'document') ? ' · not split into slides (re-upload, or convert to PDF)' : ''}. Choose another file to replace it.` : 'Choose a PDF, PowerPoint, image or MP4 video.';
+    const strip = $(`${p}-slide-strip`); if (strip) { strip.classList.add('hidden'); strip.innerHTML = ''; }
+    if (isUpload && s.slide_count && s.id) loadSlideStrip(p, s.id);
     pendingBriefingFile[p] = null;
     setImageMode(p, s.image_mode || 'stock');
     $(`${p}-image-style`).value = s.image_style || '';
@@ -885,7 +895,7 @@ async function wizardRefine(p) {
     if (!fb) { $(`${p}-refine-status`).textContent = 'Type some feedback first.'; return; }
     const cur = readForm(p);
     const current = { title: cur.title, topic: cur.topic, survey_type: cur.survey_type, questions: cur.questions, instructions: cur.instructions, facilitator_intro: cur.facilitator_intro, briefing_text: cur.briefing_text, image_style: cur.image_style, max_messages: cur.max_messages };
-    const body = { ...(p === 'new' ? wizardBrief() : { goal: cur.topic }), current, feedback: fb };
+    const body = { ...(p === 'new' ? wizardBrief() : { goal: cur.topic, survey_id: currentSurveyId }), current, feedback: fb };
     if (!body.goal) body.goal = cur.title || 'Revise the survey';
     $(`${p}-refine-status`).innerHTML = '<span class="spinner dark"></span> Revising…';
     try {
@@ -1062,6 +1072,22 @@ function initDraftAutosave() {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
 }
 
+async function loadSlideStrip(p, surveyId) {
+    const strip = $(`${p}-slide-strip`); if (!strip) return;
+    try {
+        const slides = await api(`/api/surveys/${surveyId}/slides`);
+        if (!slides.length) return;
+        strip.innerHTML = slides.map(sl => `<a href="${esc(sl.url)}" target="_blank" title="${esc(sl.text || '')}"><img src="${esc(sl.url)}" alt="Slide ${sl.page}" loading="lazy"><span>Slide ${sl.page}</span></a>`).join('');
+        strip.classList.remove('hidden');
+    } catch (e) { /* preview is optional */ }
+}
+function describeUpload(res) {
+    if (!res) return '';
+    if (res.slide_count) return ` Deck split into ${res.slide_count} slides.`;
+    if (res.slide_error) return ` ${res.slide_error}`;
+    return '';
+}
+
 async function uploadBriefing(surveyId, p) {
     const f = pendingBriefingFile[p];
     if (!f) return;
@@ -1084,7 +1110,7 @@ async function createSurvey() {
         try {
             const res = await api('/api/surveys', 'POST', data);
             if (pendingBriefingFile.new) {
-                try { await uploadBriefing(res.id, 'new'); }
+                try { const up = await uploadBriefing(res.id, 'new'); if (up && up.slide_error) alert('Survey created. ' + up.slide_error); }
                 catch (e) { alert('Survey created, but the briefing upload failed: ' + e.message + '\nYou can upload it again from the Setup tab.'); }
             }
             clearDraft('new');
@@ -1277,6 +1303,14 @@ function selectParticipant(idx) {
 function downloadConversations() { window.open(`/api/surveys/${currentSurveyId}/download-conversations?token=${token}`, '_blank'); }
 function openReport(format) { window.open(`/api/surveys/${currentSurveyId}/report?format=${format}&token=${token}`, '_blank'); }
 
+const IX_KIND_LABELS = { mcq: 'Multiple choice', fill_blank: 'Fill in the blanks', order: 'Put in order', match: 'Match the pairs', scale: 'Scale' };
+function describeInteractive(ev) {
+    if (ev.kind === 'mcq') return ' — ' + (ev.options || []).map((o, i) => (i === ev.correct ? '✓ ' : '') + esc(o)).join(' / ');
+    if (ev.kind === 'fill_blank') return ` — ${esc(ev.text || '')} (answers: ${esc((ev.answers || []).join(', '))})`;
+    if (ev.kind === 'order') return ' — correct order: ' + esc((ev.items || []).join(' → '));
+    if (ev.kind === 'match') return ' — ' + (ev.pairs || []).map(p => esc(p.left) + ' ↔ ' + esc(p.right)).join('; ');
+    return '';
+}
 function showConversation(idx) {
     if (idx === '' || !currentResults) return;
     const p = currentResults.participants[idx];
@@ -1288,7 +1322,10 @@ function showConversation(idx) {
             try { events = JSON.parse(m.content.slice(13)); } catch (_) {}
             events.forEach(ev => {
                 if (ev.t === 'media' && ev.type === 'image') {
-                    viewer.innerHTML += `<div class="convo-media"><img src="${esc(ev.url)}" alt="${esc(ev.alt || '')}" loading="lazy">${ev.caption ? `<div class="cap">${esc(ev.caption)}</div>` : ''}</div>`;
+                    const cap = (ev.slide ? `Slide ${ev.slide}${ev.slide_total ? ' of ' + ev.slide_total : ''}` : '') + (ev.caption ? (ev.slide ? ' · ' : '') + ev.caption : '');
+                    viewer.innerHTML += `<div class="convo-media"><img src="${esc(ev.url)}" alt="${esc(ev.alt || '')}" loading="lazy">${cap ? `<div class="cap">${esc(cap)}</div>` : ''}</div>`;
+                } else if (ev.t === 'interactive') {
+                    viewer.innerHTML += `<div class="convo-ix"><b>${esc(IX_KIND_LABELS[ev.kind] || 'Interactive')}:</b> ${esc(ev.question || '')}${describeInteractive(ev)}</div>`;
                 } else if (ev.t === 'media' && ev.type === 'video') {
                     viewer.innerHTML += `<div class="kv">[Video shown${ev.caption ? ': ' + esc(ev.caption) : ''}]</div>`;
                 } else if (ev.t === 'buttons') {
@@ -1400,10 +1437,11 @@ async function saveSettings() {
         if (getBriefingMode('edit') === 'upload' && !pendingBriefingFile.edit) { delete data.briefing_type; delete data.briefing_url; }
         status.innerHTML = '<span class="spinner dark"></span> Saving…';
         await api(`/api/surveys/${currentSurveyId}`, 'PATCH', data);
-        if (pendingBriefingFile.edit) await uploadBriefing(currentSurveyId, 'edit');
+        let uploadNote = '';
+        if (pendingBriefingFile.edit) uploadNote = describeUpload(await uploadBriefing(currentSurveyId, 'edit'));
         clearDraft('edit');
-        status.textContent = 'Saved.';
-        refreshDetail();
+        await refreshDetail();
+        status.textContent = 'Saved.' + uploadNote;
     } catch (e) { status.textContent = 'Error: ' + e.message; }
 }
 

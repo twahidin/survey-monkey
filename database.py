@@ -104,6 +104,8 @@ def init_db():
             "size_bytes INTEGER NOT NULL DEFAULT 0, "
             "created_at TIMESTAMPTZ DEFAULT now())"
         ))
+        conn.execute(text("ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS page_index INTEGER"))
+        conn.execute(text("ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS text_content TEXT"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_assets_survey_id ON media_assets(survey_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_assets_participant_id ON media_assets(participant_id)"))
         conn.commit()

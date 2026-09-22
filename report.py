@@ -42,6 +42,8 @@ def transcript_items(messages: list) -> list:
                     items.append({"kind": "media", "role": "assistant", "event": ev, "created_at": created})
                 elif ev.get("t") == "buttons":
                     items.append({"kind": "buttons", "role": "assistant", "event": ev, "created_at": created})
+                elif ev.get("t") == "interactive":
+                    items.append({"kind": "interactive", "role": "assistant", "event": ev, "created_at": created})
             continue
         if content.startswith("(The participant has just joined"):
             continue
@@ -112,6 +114,31 @@ th{background:#f1f5f9;font-weight:600}
 """
 
 
+INTERACTIVE_LABELS = {"mcq": "Multiple choice", "fill_blank": "Fill in the blanks", "order": "Put in order",
+                      "match": "Match the pairs", "scale": "Scale"}
+
+
+def interactive_summary(ev: dict) -> str:
+    """One-line description of an interactive check and its answer key, for reports."""
+    kind = ev.get("kind", "")
+    label = INTERACTIVE_LABELS.get(kind, "Interactive")
+    q = ev.get("question") or ""
+    detail = ""
+    if kind == "mcq":
+        opts = ev.get("options") or []
+        c = ev.get("correct")
+        detail = " / ".join(f"{'✓ ' if c == i else ''}{o}" for i, o in enumerate(opts))
+    elif kind == "fill_blank":
+        detail = f"{ev.get('text', '')} — answers: {', '.join(ev.get('answers') or [])}"
+    elif kind == "order":
+        detail = "correct order: " + " → ".join(ev.get("items") or [])
+    elif kind == "match":
+        detail = "; ".join(f"{p.get('left')} ↔ {p.get('right')}" for p in ev.get("pairs") or [])
+    elif kind == "scale":
+        detail = f"{ev.get('min_label', '')} … {ev.get('max_label', '')}"
+    return f"{label}: {q}" + (f" [{detail}]" if detail else "")
+
+
 def _render_items(items: list, asset_loader, fetch_external: bool) -> str:
     out = []
     for it in items:
@@ -133,6 +160,8 @@ def _render_items(items: list, asset_loader, fetch_external: bool) -> str:
             labels = "".join(f"<span>{_esc(o.get('label', ''))}</span>" for o in ev.get("options", []))
             q = ev.get("question") or ""
             out.append(f'<div class="small">Options offered{": " + _esc(q) if q else ""}</div><div class="opts">{labels}</div>')
+        elif it["kind"] == "interactive":
+            out.append(f'<div class="small">Interactive check — {_esc(interactive_summary(it["event"]))}</div>')
     return "\n".join(out)
 
 
@@ -355,6 +384,10 @@ def build_survey_report_docx(survey, participants: list, stats: dict, insights: 
                 bp = doc.add_paragraph(f"[Options offered: {labels}]")
                 bp.runs[0].font.size = Pt(8.5)
                 bp.runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+            elif it["kind"] == "interactive":
+                ip = doc.add_paragraph(f"[Interactive check — {interactive_summary(it['event'])}]")
+                ip.runs[0].font.size = Pt(8.5)
+                ip.runs[0].font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
 
     buf = io.BytesIO()
     doc.save(buf)

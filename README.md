@@ -8,7 +8,10 @@ Work in the survey builder is **auto-saved locally** as you type, so a closed ta
 
 ### Participant experience (`/`)
 - Students enter an access code (or open a `/?code=…` link)
-- **Task briefing first**: the teacher's slide deck, video, PDF or document is shown before the chat (YouTube, Vimeo, Google Slides, Canva, Drive, PDF, uploaded PowerPoint/PDF/MP4)
+- **Task briefing first**: the organiser's slide deck, video, PDF or document is shown before the chat (YouTube, Vimeo, Google Slides, Canva, Drive, PDF, uploaded PowerPoint/PDF/MP4)
+- **Slide-aware chatbot**: uploaded PDF/PowerPoint decks are split into slides; the facilitator reads the slide text, shows any slide in the visual panel while discussing it, and re-shows it when a participant struggles
+- **Interactive checks in the chat**: multiple choice, fill-in-the-blank, put-in-order, match-the-pairs and confidence scales with instant feedback; results flow back into the conversation and reports
+- **Guided learning** survey type: walk weaker learners through a deck one idea at a time — explain, MCQ, short answer, then a longer answer
 - **Two-panel chat**: a visual panel and the conversation — side by side on desktop, visual panel on top on mobile
 - The facilitator bot asks one question at a time and probes for reasoning; it can show **AI-generated illustrations** for each question, **stock photos**, **videos** and **button options**
 - Sessions resume after a refresh; students can **download their own responses** at the end

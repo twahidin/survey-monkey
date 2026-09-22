@@ -1,5 +1,6 @@
 """Ponder — AI-facilitated conversational surveys and reflections for classrooms, teams and communities. FastAPI application."""
 
+import asyncio
 import json
 import logging
 import os
@@ -33,6 +34,7 @@ from llm import (
     ANTHROPIC_API_KEY, OPENROUTER_API_KEY, CLAUDE_CHAT_MODEL, CLAUDE_ANALYSIS_MODEL,
 )
 from imagegen import generate_image, IMAGE_PROVIDERS
+from slides import extract_slides, deck_context, SlideError
 from report import (
     build_survey_report_html, build_survey_report_docx, build_participant_report_html,
 )
@@ -64,6 +66,15 @@ SURVEY_TYPE_PROMPTS = {
     "depth_survey": "You are conducting a Depth Survey — a reflective conversation. Take your time with each topic. Ask probing follow-ups, explore underlying motivations, help participants reflect deeply. Prioritise depth over breadth.",
     "formative_assessment": "You are running a Formative Assessment conversation. Work through the questions to surface what the participant understands and where misconceptions are. Probe reasoning with 'why' and 'how' follow-ups. Never lecture; hint at most once, then move on. Be encouraging and never make the participant feel judged.",
     "reflection": "You are guiding a Reflection conversation after a task or experience. Help the participant articulate what they did, what they learned, what was hard, and what they would do differently. Use open questions and give them space to think.",
+    "guided_learning": (
+        "You are running a Guided Learning walkthrough for a participant who may find the material difficult. "
+        "Work through the briefing material in order, one small idea at a time. For each idea: first show the relevant slide "
+        "(show_slide) or an illustration and explain it in two or three plain sentences; then check understanding with an "
+        "interactive (show_interactive) — start with an easy multiple-choice or fill-in-the-blank, then ask a short written answer, "
+        "and only then a longer 'explain in your own words' question. If an answer is wrong or shaky, do not move on: show the slide again, "
+        "point at the exact part that answers it, give one hint, and ask again in a simpler way. Celebrate small wins, keep language simple, "
+        "never make the participant feel judged, and keep a running sense of what they have mastered so the closing summary can list it."
+    ),
 }
 
 
@@ -330,12 +341,67 @@ SHOW_VIDEO_TOOL = {
     },
 }
 
+SHOW_SLIDE_TOOL = {
+    "name": "show_slide",
+    "description": (
+        "Display one slide/page of the briefing deck in the participant's visual panel. "
+        "Use it whenever you discuss, explain or ask about a slide, and again when the participant struggles, so they can look at it while answering."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "page": {"type": "integer", "description": "1-based slide/page number from the DECK CONTENT list"},
+            "caption": {"type": "string", "description": "Short caption pointing the participant to what to look at on this slide"},
+        },
+        "required": ["page"],
+    },
+}
+
+INTERACTIVE_KINDS = ("mcq", "fill_blank", "order", "match", "scale")
+
+SHOW_INTERACTIVE_TOOL = {
+    "name": "show_interactive",
+    "description": (
+        "Show a small interactive check inside the chat that the participant completes by tapping or typing; the result comes back to you as their next message. "
+        "Kinds: 'mcq' (one correct option; give options + correct index + explanation), "
+        "'fill_blank' (a sentence with ___ blanks and the expected answers, in order; alternatives separated by |), "
+        "'order' (items listed in the CORRECT order; they are shuffled for the participant), "
+        "'match' (pairs of left/right items to match), "
+        "'scale' (a confidence or agreement slider with min/max labels). "
+        "Use these for quick understanding checks; always write a short message alongside the tool call."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": list(INTERACTIVE_KINDS)},
+            "question": {"type": "string", "description": "The prompt shown above the interactive"},
+            "options": {"type": "array", "items": {"type": "string"}, "description": "mcq: 2-5 answer options"},
+            "correct": {"type": "integer", "description": "mcq: 0-based index of the correct option"},
+            "text": {"type": "string", "description": "fill_blank: sentence with one or more ___ blanks"},
+            "answers": {"type": "array", "items": {"type": "string"}, "description": "fill_blank: expected answer per blank, alternatives separated by |"},
+            "items": {"type": "array", "items": {"type": "string"}, "description": "order: 3-6 items in the correct order"},
+            "pairs": {
+                "type": "array",
+                "items": {"type": "object", "properties": {"left": {"type": "string"}, "right": {"type": "string"}}, "required": ["left", "right"]},
+                "description": "match: 2-6 pairs",
+            },
+            "min_label": {"type": "string", "description": "scale: label at the low end (e.g. 'Not confident')"},
+            "max_label": {"type": "string", "description": "scale: label at the high end (e.g. 'Very confident')"},
+            "explanation": {"type": "string", "description": "Short explanation revealed after the participant answers"},
+            "hint": {"type": "string", "description": "Optional hint the participant can reveal before answering"},
+        },
+        "required": ["kind", "question"],
+    },
+}
+
 # Backwards-compatible name used elsewhere
 SURVEY_TOOLS = [STOCK_IMAGE_TOOL, SHOW_BUTTONS_TOOL, SHOW_VIDEO_TOOL]
 
 
-def build_survey_tools(cfg: LLMConfig) -> list:
-    tools = [SHOW_BUTTONS_TOOL]
+def build_survey_tools(cfg: LLMConfig, slide_count: int = 0) -> list:
+    tools = [SHOW_BUTTONS_TOOL, SHOW_INTERACTIVE_TOOL]
+    if slide_count:
+        tools.append(SHOW_SLIDE_TOOL)
     if cfg.image_mode == "generate":
         tools.append(GENERATE_IMAGE_TOOL)
     elif cfg.image_mode == "stock" and UNSPLASH_ACCESS_KEY:
@@ -345,11 +411,19 @@ def build_survey_tools(cfg: LLMConfig) -> list:
     return tools
 
 
-def build_tool_prompt(cfg: LLMConfig) -> str:
+def build_tool_prompt(cfg: LLMConfig, slide_count: int = 0) -> str:
     lines = [
         "\n\n[TOOLS: You have tools to enrich the conversation. "
-        "Use show_buttons when a question has clear discrete choices (frequency, ratings, yes/no, pick-one)."
+        "Use show_buttons when a question has clear discrete choices (frequency, ratings, yes/no, pick-one). "
+        "Use show_interactive for quick understanding checks (mcq, fill_blank, order, match, scale); the participant's result "
+        "arrives as a message starting with [Interactive] — respond to it (confirm, correct gently, or build on it) before moving on."
     ]
+    if slide_count:
+        lines.append(
+            f"The briefing deck has {slide_count} slides and their text is listed under DECK CONTENT. "
+            "Use show_slide(page) whenever you discuss a slide so it appears in the visual panel, and say which slide you are on. "
+            "If the participant struggles, show the slide again and point to the exact part that answers the question."
+        )
     if cfg.image_mode == "generate":
         lines.append(
             "Use show_image to generate an illustration whenever you introduce a new question, scenario or idea "
@@ -471,7 +545,77 @@ async def _process_tool_call(tool_name: str, tool_input: dict, cfg: LLMConfig, d
                 "options": [o for o in options if isinstance(o, dict) and o.get("label")],
                 "allow_multiple": bool(tool_input.get("allow_multiple", False)),
             })
+    elif tool_name == "show_slide":
+        try:
+            page = int(tool_input.get("page"))
+        except (TypeError, ValueError):
+            return events
+        if survey_id is None:
+            return events
+        asset = db.query(MediaAsset).filter(
+            MediaAsset.survey_id == survey_id, MediaAsset.kind == "slide", MediaAsset.page_index == page
+        ).first()
+        if not asset:
+            return events
+        total = db.query(func.count(MediaAsset.id)).filter(MediaAsset.survey_id == survey_id, MediaAsset.kind == "slide").scalar() or 0
+        events.append({
+            "t": "media", "type": "image", "slide": page, "slide_total": total,
+            "url": f"/api/assets/{asset.id}", "alt": f"Slide {page}",
+            "caption": tool_input.get("caption", ""),
+        })
+    elif tool_name == "show_interactive":
+        ev = _validate_interactive(tool_input)
+        if ev:
+            events.append(ev)
     return events
+
+
+def _validate_interactive(inp: dict):
+    """Normalise a show_interactive call into a safe, renderable event (or None)."""
+    kind = (inp.get("kind") or "").strip()
+    question = str(inp.get("question") or "").strip()
+    if kind not in INTERACTIVE_KINDS or not question:
+        return None
+    strs = lambda v, n=8: [str(x).strip() for x in v if str(x).strip()][:n] if isinstance(v, list) else []
+    ev = {"t": "interactive", "kind": kind, "question": question,
+          "explanation": str(inp.get("explanation") or "").strip(), "hint": str(inp.get("hint") or "").strip()}
+    if kind == "mcq":
+        ev["options"] = strs(inp.get("options"), 6)
+        if len(ev["options"]) < 2:
+            return None
+        try:
+            ev["correct"] = int(inp.get("correct"))
+        except (TypeError, ValueError):
+            ev["correct"] = None
+        if ev["correct"] is not None and not (0 <= ev["correct"] < len(ev["options"])):
+            ev["correct"] = None
+    elif kind == "fill_blank":
+        ev["text"] = str(inp.get("text") or "").strip()
+        ev["answers"] = strs(inp.get("answers"), 6)
+        blanks = ev["text"].count("___")
+        if not blanks or not ev["answers"]:
+            return None
+        ev["answers"] = ev["answers"][:blanks] if len(ev["answers"]) >= blanks else ev["answers"] + [""] * (blanks - len(ev["answers"]))
+    elif kind == "order":
+        ev["items"] = strs(inp.get("items"), 6)
+        if len(ev["items"]) < 3:
+            return None
+    elif kind == "match":
+        pairs = inp.get("pairs") if isinstance(inp.get("pairs"), list) else []
+        ev["pairs"] = [{"left": str(p.get("left", "")).strip(), "right": str(p.get("right", "")).strip()}
+                       for p in pairs if isinstance(p, dict) and p.get("left") and p.get("right")][:6]
+        if len(ev["pairs"]) < 2:
+            return None
+    elif kind == "scale":
+        ev["min_label"] = str(inp.get("min_label") or "Not at all").strip()
+        ev["max_label"] = str(inp.get("max_label") or "Completely").strip()
+    return ev
+
+
+def _survey_slides(db: Session, survey_id) -> list:
+    return (db.query(MediaAsset.id, MediaAsset.page_index, MediaAsset.text_content)
+            .filter(MediaAsset.survey_id == survey_id, MediaAsset.kind == "slide")
+            .order_by(MediaAsset.page_index).all())
 
 
 # ──────────────────────────── Pydantic Schemas ────────────────────────────
@@ -582,6 +726,7 @@ class WizardRequest(BaseModel):
     extra: Optional[str] = None
     current: Optional[dict] = None
     feedback: Optional[str] = None
+    survey_id: Optional[str] = None   # when refining an existing survey: lets the wizard read its slide deck
 
 class TestImageRequest(BaseModel):
     provider: Optional[str] = None
@@ -596,9 +741,13 @@ SURVEY_BRIEFING_TYPES = {"none", "slides", "video", "document", "image", "link"}
 IMAGE_MODES = {"none", "stock", "generate"}
 
 
-def _survey_public_dict(s: Survey) -> dict:
+def _survey_public_dict(s: Survey, db: Session = None) -> dict:
     """Fields every admin-facing survey payload should expose."""
+    slide_count = 0
+    if db is not None:
+        slide_count = db.query(func.count(MediaAsset.id)).filter(MediaAsset.survey_id == s.id, MediaAsset.kind == "slide").scalar() or 0
     return {
+        "slide_count": int(slide_count),
         "briefing_type": s.briefing_type or "none",
         "briefing_url": s.briefing_url or "",
         "briefing_text": s.briefing_text or "",
@@ -756,7 +905,7 @@ def list_surveys(
             "completed_participants": completed,
             "total_participants": total,
             "created_by": admin_map.get(str(s.admin_id), ""),
-            **_survey_public_dict(s),
+            **_survey_public_dict(s, db),
         }
         for s, total, active, completed in surveys
     ]
@@ -971,8 +1120,36 @@ async def upload_briefing(
     db.flush()
     survey.briefing_type = kind
     survey.briefing_url = f"/api/assets/{asset.id}"
+    # Split decks into per-slide images + text so the chatbot can show and discuss each slide
+    db.query(MediaAsset).filter(MediaAsset.survey_id == survey.id, MediaAsset.kind == "slide").delete()
+    slide_count, slide_error = 0, ""
+    if kind in ("slides", "document"):
+        try:
+            pages = await asyncio.to_thread(extract_slides, data, mime, file.filename or "")
+            for pg in pages:
+                db.add(MediaAsset(
+                    survey_id=survey.id, kind="slide", mime_type=pg["mime"], filename=f"slide-{pg['page']}.jpg",
+                    page_index=pg["page"], text_content=pg["text"], data=pg["image"], size_bytes=len(pg["image"]),
+                ))
+            slide_count = len(pages)
+        except SlideError as e:
+            slide_error = str(e)
+        except Exception as e:  # never fail the upload because of slide splitting
+            logger.warning(f"Slide extraction failed: {e}", exc_info=True)
+            slide_error = "The file was saved, but it could not be split into slides."
     db.commit()
-    return {"url": survey.briefing_url, "briefing_type": kind, "filename": file.filename, "size_bytes": len(data)}
+    return {"url": survey.briefing_url, "briefing_type": kind, "filename": file.filename, "size_bytes": len(data),
+            "slide_count": slide_count, "slide_error": slide_error}
+
+
+@app.get("/api/surveys/{survey_id}/slides")
+def list_survey_slides(survey_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
+    admin_ids = get_visible_admin_ids(db, admin)
+    survey = db.query(Survey).filter(Survey.id == survey_id, Survey.admin_id.in_(admin_ids)).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
+    return [{"page": r.page_index, "url": f"/api/assets/{r.id}", "text": (r.text_content or "")[:200]}
+            for r in _survey_slides(db, survey.id)]
 
 
 @app.get("/api/assets/{asset_id}")
@@ -1071,7 +1248,7 @@ def get_survey_results(
             "collect_name": survey.collect_name,
             "collect_email": survey.collect_email,
             "collect_phone": survey.collect_phone,
-            **_survey_public_dict(survey),
+            **_survey_public_dict(survey, db),
         },
         "stats": results["stats"],
         "participants": results["participants"],
@@ -1509,9 +1686,12 @@ WIZARD_SYSTEM = (
     "Return ONLY a JSON object with these keys (all strings unless noted):\n"
     '  "title": short survey title (max 8 words)\n'
     '  "topic": one-sentence description of what the survey is about\n'
-    '  "survey_type": one of general_sensing | categorising | depth_survey | formative_assessment | reflection\n'
+    '  "survey_type": one of general_sensing | categorising | depth_survey | formative_assessment | reflection | guided_learning '
+    '(guided_learning = walk a participant who finds the material hard through a slide deck: explain, then MCQ, then short answer, then longer answer, re-showing slides on mistakes)\n'
     '  "questions": the questions the facilitator must cover, numbered one per line, ordered from easy to demanding. '
-    'Each question should be open, concrete and answerable by the target audience. Include a short note in brackets on what a strong answer contains where helpful.\n'
+    'Each question should be open, concrete and answerable by the target audience. Include a short note in brackets on what a strong answer contains where helpful. '
+    'For guided_learning, group them by slide/section ("Slide 3: ...") and for each section give an MCQ (with options and the correct one), a short-answer prompt and a longer explain-it prompt. '
+    'If DECK CONTENT is provided, base the questions on the actual slides and cite slide numbers.\n'
     '  "instructions": how the facilitator should behave — pacing, follow-up strategy, what to do with weak/strong answers, '
     'how to close, what NOT to do (e.g. never give away answers). 4-8 sentences.\n'
     '  "facilitator_intro": a friendly 1-2 sentence introduction the bot says at the start, in first person, naming the task\n'
@@ -1545,6 +1725,16 @@ async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin
         brief.append("\nCURRENT DRAFT (JSON):\n" + json.dumps(req.current, ensure_ascii=False, indent=1))
     if req.feedback:
         brief.append(f"\nORGANISER'S FEEDBACK — revise the draft accordingly, keeping what works:\n{req.feedback}")
+    if req.survey_id:
+        try:
+            sid = uuid.UUID(req.survey_id)
+            wiz_survey = db.query(Survey).filter(Survey.id == sid, Survey.admin_id.in_(get_visible_admin_ids(db, admin))).first()
+        except ValueError:
+            wiz_survey = None
+        if wiz_survey:
+            deck = _survey_slides(db, wiz_survey.id)
+            if deck:
+                brief.append(f"\nDECK CONTENT ({len(deck)} slides):\n" + deck_context(deck, max_chars=12000))
     cfg = resolve_llm_config(db, admin=admin)
     try:
         result = await complete_chat(cfg, WIZARD_SYSTEM, [{"role": "user", "content": "\n".join(brief)}],
@@ -1579,7 +1769,7 @@ def _briefing_payload(survey: Survey) -> dict:
     }
 
 
-def _build_chat_system(survey: Survey, cfg: LLMConfig) -> str:
+def _build_chat_system(survey: Survey, cfg: LLMConfig, slides: list = None) -> str:
     system = survey.system_prompt
     if survey.briefing_text and survey.briefing_text.strip():
         system += (
@@ -1587,7 +1777,13 @@ def _build_chat_system(survey: Survey, cfg: LLMConfig) -> str:
             "Refer to it where relevant and do not repeat it in full:\n"
             + survey.briefing_text.strip() + "\n]"
         )
-    return system + CONVERSATIONAL_PROMPT + build_tool_prompt(cfg)
+    slides = slides or []
+    if slides:
+        system += (
+            f"\n\n[DECK CONTENT — the briefing deck has {len(slides)} slides. Text of each slide:\n"
+            + deck_context(slides) + "\n]"
+        )
+    return system + CONVERSATIONAL_PROMPT + build_tool_prompt(cfg, len(slides))
 
 
 @app.post("/api/survey/join")
@@ -1605,14 +1801,15 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     db.refresh(participant)
 
     cfg = resolve_llm_config(db, survey)
-    system = _build_chat_system(survey, cfg)
+    slides = _survey_slides(db, survey.id)
+    system = _build_chat_system(survey, cfg, slides)
     if survey.facilitator_intro and survey.facilitator_intro.strip():
         system += (
             "\n\n[When you first greet the participant, use this introduction (say it naturally):\n"
             + survey.facilitator_intro.strip()
             + "\n]"
         )
-    tools = build_survey_tools(cfg)
+    tools = build_survey_tools(cfg, len(slides))
     try:
         result = await complete_chat(
             cfg, system,
@@ -1655,11 +1852,11 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     }
 
 
-async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant, survey, db, near_limit: bool):
+async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant, survey, db, near_limit: bool, slide_count: int = 0):
     """Stream text + tool results as SSE events."""
     full_text = []
     tool_events = []
-    tools = build_survey_tools(cfg)
+    tools = build_survey_tools(cfg, slide_count)
     try:
         async for ev in stream_chat(cfg, system, history, tools=tools if not near_limit else None, max_tokens=1024):
             if ev["type"] == "text":
@@ -1778,7 +1975,8 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
 
     survey = participant.survey
     cfg = resolve_llm_config(db, survey)
-    system = _build_chat_system(survey, cfg)
+    slides = _survey_slides(db, survey.id)
+    system = _build_chat_system(survey, cfg, slides)
     if near_limit:
         system += (
             "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
@@ -1786,7 +1984,7 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             "and end the conversation warmly. Do not use tools in this final message.]"
         )
 
-    gen = _chat_stream_generator(cfg, system, history, participant, survey, db, near_limit)
+    gen = _chat_stream_generator(cfg, system, history, participant, survey, db, near_limit, len(slides))
     return StreamingResponse(
         gen,
         media_type="text/event-stream",
