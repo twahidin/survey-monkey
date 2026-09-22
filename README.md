@@ -48,6 +48,7 @@ In your Railway service settings, add:
 | `OPENROUTER_API_KEY` | *(Optional)* OpenRouter key; used when a teacher selects OpenRouter without their own key. If no Anthropic key is set, OpenRouter becomes the default provider |
 | `OPENROUTER_CHAT_MODEL` / `OPENROUTER_ANALYSIS_MODEL` | *(Optional)* default OpenRouter models (`anthropic/claude-haiku-4.5`, `anthropic/claude-sonnet-4.5`) |
 | `OPENAI_API_KEY` / `POLLINATIONS_API_KEY` | *(Optional)* server-wide keys for image generation providers |
+| `CLAUDE_CHAT_MODEL` / `CLAUDE_ANALYSIS_MODEL` | *(Optional)* Claude models for conversations and analysis (default `claude-sonnet-5` for both) |
 | `SECRET_KEY` | A random string for JWT signing (e.g. `openssl rand -hex 32`) |
 | `ENCRYPTION_KEY` | A Fernet key for encrypting stored API keys (`python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`). Set it so keys survive restarts |
 | `APP_URL` | *(Optional)* public URL of the app, sent to OpenRouter as the referer |
