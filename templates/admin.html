@@ -297,7 +297,7 @@
             <div class="page-head">
                 <div><h2>Your Surveys</h2><div class="kv">Conversational surveys, reflections and check-ins for classrooms, teams and communities.</div></div>
                 <div style="display:flex;gap:8px">
-                    <button class="btn btn-outline admin-only" onclick="openTeachersModal()">Teachers</button>
+                    <button class="btn btn-outline admin-only" onclick="openTeachersModal()">Facilitators</button>
                     <button class="btn" id="new-survey-btn" onclick="openCreateModal()">+ New Survey</button>
                 </div>
             </div>
@@ -495,14 +495,15 @@
 <!-- TEACHERS MODAL -->
 <div id="teachers-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeTeachersModal()">
     <div class="modal">
-        <h2>Teacher management</h2>
+        <h2>Facilitators</h2>
+        <p class="kv" style="margin:-6px 0 14px">Invite colleagues — teachers, trainers, HR or researchers — to run their own surveys under your account.</p>
         <div style="display:flex;gap:10px;margin-bottom:16px"><button class="btn" onclick="generateInvite()">Generate invite link</button></div>
         <div id="invite-link-box" class="hidden" style="margin-bottom:16px;padding:14px;background:var(--primary-soft);border-radius:var(--radius-sm);word-break:break-all">
-            <div style="font-size:.82rem;font-weight:600;margin-bottom:6px">Share this link with a teacher:</div>
+            <div style="font-size:.82rem;font-weight:600;margin-bottom:6px">Share this link with the facilitator:</div>
             <div id="invite-link-text" style="font-family:ui-monospace,monospace;font-size:.85rem;color:var(--primary-ink)"></div>
             <button class="btn btn-sm" style="margin-top:8px" onclick="copyInviteLink()">Copy link</button>
         </div>
-        <div id="teachers-list"><p class="kv">Loading teachers...</p></div>
+        <div id="teachers-list"><p class="kv">Loading facilitators...</p></div>
         <div class="modal-foot"><button class="btn btn-outline" onclick="closeTeachersModal()">Close</button></div>
     </div>
 </div>
@@ -2106,7 +2107,7 @@ async function loadTeachers() {
     const container = $('teachers-list');
     try {
         const teachers = await api('/api/admin/teachers');
-        if (!teachers.length) { container.innerHTML = '<p class="kv">No teachers yet. Generate an invite link to get started.</p>'; return; }
+        if (!teachers.length) { container.innerHTML = '<p class="kv">No facilitators yet. Generate an invite link to get started.</p>'; return; }
         container.innerHTML = teachers.map(t => `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px;background:var(--surface-2);border-radius:var(--radius-sm);margin-bottom:8px;border:1px solid var(--border)">
                 <div>
@@ -2115,7 +2116,7 @@ async function loadTeachers() {
                 </div>
                 <button class="btn btn-sm btn-danger btn-outline" onclick="removeTeacher('${t.id}','${esc(t.username)}')">Remove</button>
             </div>`).join('');
-    } catch (e) { container.innerHTML = '<p style="color:var(--danger);font-size:.88rem">Failed to load teachers</p>'; }
+    } catch (e) { container.innerHTML = '<p style="color:var(--danger);font-size:.88rem">Failed to load facilitators</p>'; }
 }
 async function generateInvite() {
     try {
@@ -2131,7 +2132,7 @@ function copyInviteLink() {
     });
 }
 async function removeTeacher(id, name) {
-    if (!confirm(`Remove teacher "${name}"? Their surveys will be reassigned to you.`)) return;
+    if (!confirm(`Remove facilitator "${name}"? Their surveys will be reassigned to you.`)) return;
     try { await api(`/api/admin/teachers/${id}`, 'DELETE'); loadTeachers(); loadSurveys(); }
     catch (e) { alert('Failed to remove: ' + e.message); }
 }

@@ -1988,7 +1988,7 @@ async def test_image(req: TestImageRequest, db: Session = Depends(get_db), admin
 @app.post("/api/admin/invite")
 def create_invite(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     if admin.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can invite teachers")
+        raise HTTPException(status_code=403, detail="Only admins can invite facilitators")
     code = secrets.token_urlsafe(16)
     invite = InviteCode(code=code, admin_id=admin.id)
     db.add(invite)
@@ -2015,7 +2015,7 @@ def register_teacher(req: TeacherRegister, db: Session = Depends(get_db)):
 @app.get("/api/admin/teachers")
 def list_teachers(db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     if admin.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can view teachers")
+        raise HTTPException(status_code=403, detail="Only admins can view facilitators")
     teachers = db.query(AdminUser).filter(AdminUser.parent_admin_id == admin.id).all()
     result = []
     for t in teachers:
@@ -2035,12 +2035,12 @@ def list_teachers(db: Session = Depends(get_db), admin: AdminUser = Depends(get_
 @app.delete("/api/admin/teachers/{teacher_id}")
 def remove_teacher(teacher_id: str, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     if admin.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can remove teachers")
+        raise HTTPException(status_code=403, detail="Only admins can remove facilitators")
     teacher = db.query(AdminUser).filter(
         AdminUser.id == teacher_id, AdminUser.parent_admin_id == admin.id
     ).first()
     if not teacher:
-        raise HTTPException(status_code=404, detail="Teacher not found")
+        raise HTTPException(status_code=404, detail="Facilitator not found")
     db.query(Survey).filter(Survey.admin_id == teacher.id).update({"admin_id": admin.id})
     db.query(AnalysisMessage).filter(AnalysisMessage.admin_id == teacher.id).update({"admin_id": admin.id})
     db.query(InviteCode).filter(InviteCode.used_by_id == teacher.id).update({"used_by_id": None, "used_at": None})
@@ -2052,12 +2052,12 @@ def remove_teacher(teacher_id: str, db: Session = Depends(get_db), admin: AdminU
 @app.put("/api/admin/teachers/{teacher_id}/api-key")
 def update_teacher_api_key(teacher_id: str, req: UpdateSettings, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
     if admin.role != "admin":
-        raise HTTPException(status_code=403, detail="Only admins can update teacher API keys")
+        raise HTTPException(status_code=403, detail="Only admins can update facilitator API keys")
     teacher = db.query(AdminUser).filter(
         AdminUser.id == teacher_id, AdminUser.parent_admin_id == admin.id
     ).first()
     if not teacher:
-        raise HTTPException(status_code=404, detail="Teacher not found")
+        raise HTTPException(status_code=404, detail="Facilitator not found")
     _apply_settings(teacher, req)
     db.commit()
     return {"ok": True, "has_api_key": bool(teacher.encrypted_api_key), "has_openrouter_key": bool(teacher.encrypted_openrouter_key)}
