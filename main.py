@@ -1795,6 +1795,50 @@ def _visual_payload(db: Session, survey: Survey, image_mode: str) -> dict:
     }
 
 
+JOIN_PLACEHOLDER = "(The participant has just joined the survey.)"
+
+
+def _normalise(text: str) -> str:
+    return " ".join("".join(ch.lower() if ch.isalnum() or ch.isspace() else " " for ch in (text or "")).split())
+
+
+def _describe_tool_events(tool_events: list) -> str:
+    parts = []
+    for ev in tool_events:
+        if ev.get("t") == "buttons":
+            opts = ", ".join(o.get("label", "") for o in ev.get("options", []))
+            parts.append(f'You presented option buttons for the question "{ev.get("question", "")}" with the options: {opts}.')
+        elif ev.get("t") == "media":
+            what = f"slide {ev['slide']}" if ev.get("slide") else ("a video" if ev.get("type") == "video" else "an image")
+            parts.append(f"You showed {what}" + (f' captioned "{ev["caption"]}".' if ev.get("caption") else "."))
+        elif ev.get("t") == "interactive":
+            parts.append(f'You showed a {ev.get("kind")} interactive check: "{ev.get("question", "")}".')
+    return " ".join(parts)
+
+
+async def _ensure_spoken_text(cfg: LLMConfig, system: str, history: list, tool_events: list) -> str:
+    """Models sometimes answer with tool calls only. Ask once more, without tools, for the words the participant should read."""
+    if not tool_events:
+        return ""
+    msgs = history + [
+        {"role": "assistant", "content": "(" + _describe_tool_events(tool_events) + ")"},
+        {"role": "user", "content": (
+            "(System: your last turn contained only tool calls and no spoken text, so the participant has nothing to read. "
+            "Write the message they should see now, in 1-3 short sentences: greet them if this is the start of the conversation, "
+            "refer naturally to what you showed, and ask the question in words. Do not list the options again and do not call tools.)"
+        )},
+    ]
+    try:
+        r = await complete_chat(cfg, system, msgs, tools=None, max_tokens=400)
+        return (r.get("text") or "").strip()
+    except LLMError as e:
+        logger.warning(f"Follow-up for spoken text failed: {e.message}")
+        return ""
+    except Exception as e:
+        logger.warning(f"Follow-up for spoken text failed: {e}")
+        return ""
+
+
 def _briefing_payload(survey: Survey) -> dict:
     return {
         "type": survey.briefing_type or "none",
@@ -1838,10 +1882,11 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     cfg = resolve_llm_config(db, survey)
     slides = _survey_slides(db, survey.id)
     system = _build_chat_system(survey, cfg, slides)
-    if survey.facilitator_intro and survey.facilitator_intro.strip():
+    intro = (survey.facilitator_intro or "").strip()
+    if intro:
         system += (
-            "\n\n[When you first greet the participant, use this introduction (say it naturally):\n"
-            + survey.facilitator_intro.strip()
+            "\n\n[Begin your very first message with this introduction, word for word, then ask the first question:\n"
+            + intro
             + "\n]"
         )
     tools = build_survey_tools(cfg, len(slides), survey_uses_interactives(survey))
@@ -1860,11 +1905,18 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     for call in result.get("tool_calls", []):
         tool_events.extend(await _process_tool_call(call["name"], call["input"], cfg, db, survey.id, participant.id))
 
-    opening = result.get("text") or ""
+    opening = (result.get("text") or "").strip()
     if not opening and tool_events:
-        opening = "(presented interactive content)"
+        opening = await _ensure_spoken_text(cfg, system, [{"role": "user", "content": JOIN_PLACEHOLDER}], tool_events)
+    if not opening and tool_events:
+        # Last resort: surface the button question as the spoken line so the chat never opens silently
+        q = next((ev.get("question") for ev in tool_events if ev.get("t") in ("buttons", "interactive") and ev.get("question")), "")
+        opening = q or "(presented interactive content)"
     if not opening:
         opening = "Hello, and welcome! Let's get started — whenever you're ready, tell me a little about yourself."
+    # The organiser's introduction is a promise to the participant: make sure it is actually said, verbatim.
+    if intro and _normalise(intro[:60]) not in _normalise(opening):
+        opening = intro + "\n\n" + opening
 
     db.add(ChatMessage(participant_id=participant.id, role="user", content="(The participant has just joined the survey.)"))
     db.add(ChatMessage(participant_id=participant.id, role="assistant", content=opening))
@@ -1916,9 +1968,13 @@ async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, par
         yield f"data: {json.dumps({'t': 'error', 'v': 'Something went wrong. Please try again.'})}\n\n"
         return
 
-    assistant_text = "".join(full_text)
+    assistant_text = "".join(full_text).strip()
     if not assistant_text and tool_events:
-        assistant_text = "(presented interactive content)"
+        assistant_text = await _ensure_spoken_text(cfg, system, history, tool_events)
+        if assistant_text:
+            yield f"data: {json.dumps({'t': 'chunk', 'v': assistant_text})}\n\n"
+        else:
+            assistant_text = "(presented interactive content)"
     if not assistant_text:
         assistant_text = "Could you tell me a bit more about that?"
         yield f"data: {json.dumps({'t': 'chunk', 'v': assistant_text})}\n\n"

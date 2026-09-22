@@ -641,7 +641,7 @@ function seedVisualPanel() {
 // ── Button options ──
 function renderButtons(data, disabled) {
     const msgs = document.getElementById('messages');
-    if (data.question && !disabled) {
+    if (data.question) {
         const rows = msgs.querySelectorAll('.msg.assistant');
         const last = rows.length ? rows[rows.length - 1] : null;
         const lastText = last ? last.textContent.trim().toLowerCase() : '';
