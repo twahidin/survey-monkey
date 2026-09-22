@@ -45,6 +45,7 @@ In your Railway service settings, add:
 | Variable | Value |
 |---|---|
 | `ANTHROPIC_API_KEY` | Your Anthropic API key (teachers can also add their own in Settings) |
+| `ANTHROPIC_WORKSPACE_ID` | *(Optional)* Only if your Anthropic key is an organisation-level key not scoped to a workspace; the workspace ID from Console → Settings → Workspaces |
 | `OPENROUTER_API_KEY` | *(Optional)* OpenRouter key; used when a teacher selects OpenRouter without their own key. If no Anthropic key is set, OpenRouter becomes the default provider |
 | `OPENROUTER_CHAT_MODEL` / `OPENROUTER_ANALYSIS_MODEL` | *(Optional)* default OpenRouter models (`anthropic/claude-haiku-4.5`, `anthropic/claude-sonnet-4.5`) |
 | `OPENAI_API_KEY` / `POLLINATIONS_API_KEY` | *(Optional)* server-wide keys for image generation providers |

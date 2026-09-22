@@ -29,6 +29,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_CHAT_MODEL = os.environ.get("CLAUDE_CHAT_MODEL", "claude-sonnet-5")
 CLAUDE_ANALYSIS_MODEL = os.environ.get("CLAUDE_ANALYSIS_MODEL", "claude-opus-5")
 
+ANTHROPIC_WORKSPACE_ID = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
 OPENROUTER_CHAT_MODEL = os.environ.get("OPENROUTER_CHAT_MODEL", "anthropic/claude-haiku-4.5")
@@ -147,7 +148,11 @@ def _friendly_http_error(resp: httpx.Response, provider: str) -> LLMError:
 def _anthropic_client(cfg: LLMConfig) -> anthropic.AsyncAnthropic:
     if not cfg.api_key:
         raise LLMError("No Anthropic API key configured. Add one in Settings or set ANTHROPIC_API_KEY.", 500)
-    return anthropic.AsyncAnthropic(api_key=cfg.api_key)
+    kwargs = {"api_key": cfg.api_key}
+    if ANTHROPIC_WORKSPACE_ID:
+        # Organisation-level keys must name the workspace to bill.
+        kwargs["default_headers"] = {"anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID}
+    return anthropic.AsyncAnthropic(**kwargs)
 
 
 def _wrap_anthropic_error(e: Exception) -> LLMError:
@@ -158,7 +163,12 @@ def _wrap_anthropic_error(e: Exception) -> LLMError:
     if isinstance(e, anthropic.NotFoundError):
         return LLMError("Anthropic could not find the configured model.", 500)
     if isinstance(e, anthropic.APIStatusError):
-        return LLMError(f"Anthropic error ({e.status_code}): {getattr(e, 'message', str(e))}", 500)
+        msg = getattr(e, 'message', str(e))
+        if "anthropic-workspace-id" in msg:
+            return LLMError(
+                "This Anthropic key is an organisation-level key. Either create a key inside a workspace "
+                "(Console → Settings → API keys → choose a workspace) or set ANTHROPIC_WORKSPACE_ID on the server.", 500)
+        return LLMError(f"Anthropic error ({e.status_code}): {msg}", 500)
     if isinstance(e, anthropic.APIConnectionError):
         return LLMError("Could not reach Anthropic. Please try again.", 503)
     return LLMError(str(e), 500)
