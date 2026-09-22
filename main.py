@@ -1,4 +1,4 @@
-"""Ponder — conversational surveys and reflections for the classroom. FastAPI application."""
+"""Ponder — AI-facilitated conversational surveys and reflections for classrooms, teams and communities. FastAPI application."""
 
 import json
 import logging
@@ -50,7 +50,7 @@ MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
 
 # Appended to survey system prompt to keep tone conversational and elicit more reflection
 CONVERSATIONAL_PROMPT = (
-    "\n\n[STYLE: Be warm, encouraging and conversational, like a good teacher facilitating a discussion. "
+    "\n\n[STYLE: Be warm, encouraging and conversational, like a skilled facilitator leading a discussion. "
     "Keep your replies short so the participant does most of the talking. "
     "Ask one question at a time. Often ask brief follow-ups to draw out more thinking "
     "(e.g. 'What made you think that?', 'Can you give an example?', 'How did that feel?'). "
@@ -62,8 +62,8 @@ SURVEY_TYPE_PROMPTS = {
     "general_sensing": "You are conducting a General Sensing survey — a quick pulse check. Ask each question, briefly clarify or follow up once, then move on. Keep it focused and efficient.",
     "categorising": "You are conducting a Categorising survey — classify participants into groups based on responses. Ask questions that help determine which category they belong to. At the end, reveal their category and provide a tailored response.",
     "depth_survey": "You are conducting a Depth Survey — a reflective conversation. Take your time with each topic. Ask probing follow-ups, explore underlying motivations, help participants reflect deeply. Prioritise depth over breadth.",
-    "formative_assessment": "You are running a Formative Assessment conversation for a class. Work through the questions to surface what the student understands and where misconceptions are. Probe reasoning with 'why' and 'how' follow-ups. Never lecture; hint at most once, then move on. Be encouraging and never make the student feel judged.",
-    "reflection": "You are guiding a Reflection conversation after a learning task. Help the student articulate what they did, what they learned, what was hard, and what they would do differently. Use open questions and give them space to think.",
+    "formative_assessment": "You are running a Formative Assessment conversation. Work through the questions to surface what the participant understands and where misconceptions are. Probe reasoning with 'why' and 'how' follow-ups. Never lecture; hint at most once, then move on. Be encouraging and never make the participant feel judged.",
+    "reflection": "You are guiding a Reflection conversation after a task or experience. Help the participant articulate what they did, what they learned, what was hard, and what they would do differently. Use open questions and give them space to think.",
 }
 
 
@@ -1503,8 +1503,9 @@ async def regenerate_survey_insights(
 
 WIZARD_SYSTEM = (
     "You are an expert instructional designer who writes prompts for AI facilitators that run "
-    "conversational surveys, reflections and formative assessments with students. "
-    "Given a teacher's rough description, produce a complete, professional configuration.\n\n"
+    "conversational surveys, reflections and formative assessments. Participants may be school students, "
+    "university students, teachers, employees or any adult group — match register and examples to the stated audience. "
+    "Given the organiser's rough description, produce a complete, professional configuration.\n\n"
     "Return ONLY a JSON object with these keys (all strings unless noted):\n"
     '  "title": short survey title (max 8 words)\n'
     '  "topic": one-sentence description of what the survey is about\n'
@@ -1514,7 +1515,7 @@ WIZARD_SYSTEM = (
     '  "instructions": how the facilitator should behave — pacing, follow-up strategy, what to do with weak/strong answers, '
     'how to close, what NOT to do (e.g. never give away answers). 4-8 sentences.\n'
     '  "facilitator_intro": a friendly 1-2 sentence introduction the bot says at the start, in first person, naming the task\n'
-    '  "briefing_text": 3-6 sentences the student reads before starting, explaining the task, why it matters and what to expect\n'
+    '  "briefing_text": 3-6 sentences the participant reads before starting, explaining the task, why it matters and what to expect\n'
     '  "image_style": a short visual style description for generated illustrations suited to the audience (e.g. "clean flat vector illustration, bright colours, no text")\n'
     '  "max_messages": integer, suggested number of participant replies for the whole conversation\n'
     "Write in clear, natural English appropriate for the audience's age. Never include markdown fences."
@@ -1523,11 +1524,11 @@ WIZARD_SYSTEM = (
 
 @app.post("/api/surveys/wizard")
 async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin: AdminUser = Depends(get_current_admin)):
-    """AI assistant that drafts (or refines) the survey configuration from a teacher's brief."""
+    """AI assistant that drafts (or refines) the survey configuration from the organiser's brief."""
     goal = (req.goal or "").strip()
     if not goal and not (req.current and req.feedback):
         raise HTTPException(status_code=400, detail="Describe what you want the chatbot to find out")
-    brief = [f"Teacher's goal: {goal}"]
+    brief = [f"Organiser's goal: {goal}"]
     if req.audience:
         brief.append(f"Audience: {req.audience}")
     if req.survey_type:
@@ -1543,7 +1544,7 @@ async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin
     if req.current:
         brief.append("\nCURRENT DRAFT (JSON):\n" + json.dumps(req.current, ensure_ascii=False, indent=1))
     if req.feedback:
-        brief.append(f"\nTEACHER'S FEEDBACK — revise the draft accordingly, keeping what works:\n{req.feedback}")
+        brief.append(f"\nORGANISER'S FEEDBACK — revise the draft accordingly, keeping what works:\n{req.feedback}")
     cfg = resolve_llm_config(db, admin=admin)
     try:
         result = await complete_chat(cfg, WIZARD_SYSTEM, [{"role": "user", "content": "\n".join(brief)}],
@@ -1973,7 +1974,7 @@ async def test_image(req: TestImageRequest, db: Session = Depends(get_db), admin
         image_base_url=(req.base_url or "").strip() or base.image_base_url,
         image_api_key=key, image_style=(req.style or "").strip(),
     )
-    prompt = (req.prompt or "").strip() or "A friendly classroom scene with students discussing ideas around a table"
+    prompt = (req.prompt or "").strip() or "A small group of people discussing ideas around a table in a bright room"
     try:
         data, mime = await generate_image(cfg, prompt)
     except LLMError as e:

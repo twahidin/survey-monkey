@@ -1,6 +1,8 @@
-# Ponder — conversational surveys and reflections for the classroom
+# Ponder — AI-facilitated conversational surveys and reflections
 
-Ponder is an AI-facilitated survey and formative-assessment chatbot for teachers and students. Students join with an **access code**, review the teacher's briefing, then talk with an AI facilitator that elicits their thinking (with illustrations for each question). Teachers design conversations with an AI-assisted wizard, monitor results live, and download reports.
+Ponder is an AI-facilitated survey, reflection and formative-assessment chatbot for classrooms, teams and communities — participants can be students, teachers or any adult group. Participants join with an **access code**, review the organiser's briefing, then talk with an AI facilitator that elicits their thinking (with illustrations for each question). Organisers design conversations with an AI-assisted wizard, monitor results live, and download reports.
+
+Work in the survey builder is **auto-saved locally** as you type, so a closed tab or lost connection never loses a half-built survey.
 
 ## Features
 
