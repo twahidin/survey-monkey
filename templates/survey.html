@@ -322,9 +322,9 @@
 <!-- Contact -->
 <div id="contact-screen" class="screen hidden">
     <div class="card">
-        <div class="eyebrow">Before you begin</div>
-        <h1 style="margin-top:6px">A few details</h1>
-        <p class="lead">These help the organiser match responses to you. Every field is optional.</p>
+        <div class="eyebrow" id="contact-eyebrow">Before you begin</div>
+        <h1 style="margin-top:6px" id="contact-heading">A few details</h1>
+        <p class="lead" id="contact-lead">These help the organiser match responses to you. Every field is optional.</p>
         <div id="contact-fields"></div>
         <div class="actions">
             <button class="btn" onclick="submitContactInfo()">Continue</button>
@@ -439,6 +439,7 @@ let sessionToken = null;
 let userMsgCount = 0;
 let maxMessages = 20;
 let collectName = false, collectEmail = false, collectPhone = false;
+let contactTiming = 'start', contactPrompt = '', contactDone = false, contactAtEnd = false;
 let pendingOpeningMessage = null, pendingOpeningEvents = null;
 let surveyTitle = 'Survey', surveyTopic = '';
 let briefing = { type: 'none', url: '', text: '', title: '' };
@@ -888,13 +889,20 @@ function closeBriefingModal() {
 }
 
 // ── Flow ──
+function collectsContact() { return collectName || collectEmail || collectPhone; }
 function afterJoin() {
-    if (collectName || collectEmail || collectPhone) show('contact-screen');
+    if (collectsContact() && contactTiming === 'start') { contactAtEnd = false; show('contact-screen'); }
     else afterContact();
 }
 function afterContact() {
+    if (contactAtEnd) { show('complete-screen'); return; }
     if (hasBriefing()) showBriefingScreen();
     else startChat();
+}
+// Called when the conversation is over: ask for details now if the organiser chose "at the end".
+function finishSurvey() {
+    if (collectsContact() && contactTiming === 'end' && !contactDone) { contactAtEnd = true; show('contact-screen'); }
+    else show('complete-screen');
 }
 
 function startChat() {
@@ -931,6 +939,7 @@ async function joinSurvey() {
         sessionToken = data.session_token;
         localStorage.setItem('survey_session', JSON.stringify({ session_token: data.session_token, survey_code: code }));
         collectName = !!data.collect_name; collectEmail = !!data.collect_email; collectPhone = !!data.collect_phone;
+        contactTiming = data.contact_timing || 'start'; contactPrompt = data.contact_prompt || ''; contactDone = false;
         surveyTitle = data.survey_title; surveyTopic = data.survey_topic || '';
         maxMessages = data.max_messages || maxMessages;
         imageMode = data.image_mode || 'stock';
@@ -1010,7 +1019,7 @@ async function doStreamRequest(text) {
             localStorage.removeItem('survey_session');
             document.getElementById('send-btn').disabled = true;
             document.getElementById('chat-input').disabled = true;
-            setTimeout(() => show('complete-screen'), 2500);
+            setTimeout(finishSurvey, 2500);
             return;
         }
     } catch (e) {
@@ -1034,7 +1043,7 @@ async function endSurvey() {
             body: JSON.stringify({ session_token: sessionToken, message: '' }),
         });
     } catch (_) {}
-    show('complete-screen');
+    finishSurvey();
 }
 
 function downloadMyReport() {
@@ -1049,6 +1058,13 @@ document.getElementById('chat-input').addEventListener('input', function () {
 
 // ── Contact ──
 function buildContactForm() {
+    document.getElementById('contact-eyebrow').textContent = contactAtEnd ? 'One last thing' : 'Before you begin';
+    document.getElementById('contact-heading').textContent = contactAtEnd ? 'Would you like to leave your details?' : 'A few details';
+    document.getElementById('contact-lead').textContent = contactPrompt.trim() || (contactAtEnd
+        ? 'Thanks for taking part. If you would like the organiser to know these responses came from you, add your details below. Every field is optional.'
+        : 'These help the organiser match responses to you. Every field is optional.');
+    document.querySelector('#contact-screen .btn:not(.btn-ghost)').textContent = contactAtEnd ? 'Submit' : 'Continue';
+    document.querySelector('#contact-screen .btn-ghost').textContent = contactAtEnd ? 'No thanks' : 'Skip';
     const c = document.getElementById('contact-fields');
     c.innerHTML = '';
     if (collectName) c.innerHTML += `<div class="field"><label>Name <span>(optional)</span></label><input id="contact-name" placeholder="Your name" autocomplete="name"></div>`;
@@ -1061,6 +1077,7 @@ async function submitContactInfo() {
     if (n) body.name = n.value.trim(); if (e) body.email = e.value.trim(); if (p) body.phone = p.value.trim();
     try {
         await fetch('/api/survey/contact-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        contactDone = !!(body.name || body.email || body.phone);
     } catch (_) {}
     afterContact();
 }
@@ -1095,6 +1112,8 @@ function replayToolEvents(content) {
                 sessionToken = data.session_token;
                 maxMessages = data.max_messages;
                 userMsgCount = data.user_message_count;
+                collectName = !!data.collect_name; collectEmail = !!data.collect_email; collectPhone = !!data.collect_phone;
+                contactTiming = data.contact_timing || 'start'; contactPrompt = data.contact_prompt || ''; contactDone = !!data.contact_done;
                 surveyTitle = data.survey_title; surveyTopic = data.survey_topic || '';
                 imageMode = data.image_mode || 'stock';
                 briefing = data.briefing || briefing;

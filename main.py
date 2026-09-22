@@ -652,6 +652,8 @@ class SurveyCreate(BaseModel):
     collect_name: bool = False
     collect_email: bool = False
     collect_phone: bool = False
+    contact_timing: Optional[str] = "end"
+    contact_prompt: Optional[str] = None
     survey_type: Optional[str] = None
     questions: Optional[str] = None
     instructions: Optional[str] = None
@@ -681,6 +683,8 @@ class SurveyUpdate(BaseModel):
     collect_name: Optional[bool] = None
     collect_email: Optional[bool] = None
     collect_phone: Optional[bool] = None
+    contact_timing: Optional[str] = None
+    contact_prompt: Optional[str] = None
     survey_type: Optional[str] = None
     questions: Optional[str] = None
     instructions: Optional[str] = None
@@ -762,6 +766,8 @@ def _survey_public_dict(s: Survey, db: Session = None) -> dict:
         slide_count = db.query(func.count(MediaAsset.id)).filter(MediaAsset.survey_id == s.id, MediaAsset.kind == "slide").scalar() or 0
     return {
         "slide_count": int(slide_count),
+        "contact_timing": s.contact_timing or "start",
+        "contact_prompt": s.contact_prompt or "",
         "briefing_type": s.briefing_type or "none",
         "briefing_url": s.briefing_url or "",
         "briefing_text": s.briefing_text or "",
@@ -793,6 +799,8 @@ def _apply_survey_fields(survey: Survey, data: dict):
             raise HTTPException(status_code=400, detail="Invalid LLM provider")
         if field == "max_messages" and value is not None:
             value = max(1, min(int(value), 200))
+        if field == "contact_timing":
+            value = value if value in ("start", "end") else "end"
         setattr(survey, field, value)
     if "image_api_key" in data:
         v = data["image_api_key"]
@@ -1861,6 +1869,8 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
         "collect_name": survey.collect_name,
         "collect_email": survey.collect_email,
         "collect_phone": survey.collect_phone,
+        "contact_timing": survey.contact_timing or "start",
+        "contact_prompt": survey.contact_prompt or "",
         "image_mode": cfg.image_mode,
         "briefing": _briefing_payload(survey),
     }
@@ -1944,6 +1954,9 @@ def resume_survey_session(req: ResumeSessionRequest, db: Session = Depends(get_d
         "collect_name": survey.collect_name,
         "collect_email": survey.collect_email,
         "collect_phone": survey.collect_phone,
+        "contact_timing": survey.contact_timing or "start",
+        "contact_prompt": survey.contact_prompt or "",
+        "contact_done": bool(participant.contact_name or participant.contact_email or participant.contact_phone),
         "user_message_count": user_msg_count,
         "image_mode": survey.image_mode or "stock",
         "briefing": _briefing_payload(survey),

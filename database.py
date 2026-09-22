@@ -46,6 +46,8 @@ def init_db():
             conn.execute(text(
                 f"ALTER TABLE surveys ADD COLUMN IF NOT EXISTS {col} BOOLEAN NOT NULL DEFAULT false"
             ))
+        conn.execute(text("ALTER TABLE surveys ADD COLUMN IF NOT EXISTS contact_timing VARCHAR(10) NOT NULL DEFAULT 'start'"))
+        conn.execute(text("ALTER TABLE surveys ADD COLUMN IF NOT EXISTS contact_prompt TEXT"))
         # Survey wizard columns
         for col in ["survey_type VARCHAR(30)", "questions TEXT", "instructions TEXT"]:
             conn.execute(text(f"ALTER TABLE surveys ADD COLUMN IF NOT EXISTS {col}"))

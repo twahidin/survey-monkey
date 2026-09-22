@@ -660,11 +660,23 @@ function buildSurveyForm(p) {
                 ${p === 'new' ? `<div class="form-group"><label>Access code <span>(optional, auto-generated if blank)</span></label><input id="new-code" placeholder="MYCLASS" maxlength="12" style="text-transform:uppercase"></div>` : ''}
                 <div class="form-group"><label>Max replies per participant</label><input id="${p}-max" type="number" value="20" min="1" max="200"><div class="help">The conversation wraps up after this many participant messages.</div></div>
             </div>
-            <div class="form-group"><label>Collect participant details <span>(asked before the briefing)</span></label>
+            <div class="form-group"><label>Collect participant details <span>(all optional for the participant)</span></label>
                 <div class="check-row">
                     <label><input type="checkbox" id="${p}-collect-name"> Name</label>
                     <label><input type="checkbox" id="${p}-collect-email"> Email</label>
                     <label><input type="checkbox" id="${p}-collect-phone"> Phone</label>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>When to ask</label>
+                    <select id="${p}-contact-timing">
+                        <option value="end">At the end, after the conversation (recommended)</option>
+                        <option value="start">At the start, before the briefing</option>
+                    </select>
+                    <div class="help">Asking at the end keeps the start friction-free; people decide once they know what they have shared.</div>
+                </div>
+                <div class="form-group"><label>Why you are asking <span>(shown above the fields)</span></label>
+                    <textarea id="${p}-contact-prompt" rows="3" placeholder="e.g. Leave your name so I can follow up with you one-to-one. Your answers are only seen by your teacher."></textarea>
                 </div>
             </div>
             <details class="adv"><summary>Advanced: use a different chat model for this survey</summary>
@@ -759,6 +771,8 @@ function readForm(p) {
         collect_name: $(`${p}-collect-name`).checked,
         collect_email: $(`${p}-collect-email`).checked,
         collect_phone: $(`${p}-collect-phone`).checked,
+        contact_timing: $(`${p}-contact-timing`).value || 'end',
+        contact_prompt: $(`${p}-contact-prompt`).value.trim() || null,
         briefing_title: $(`${p}-briefing-title`).value.trim() || null,
         briefing_text: $(`${p}-briefing-text`).value.trim() || null,
         image_mode: getImageMode(p),
@@ -797,6 +811,8 @@ function fillForm(p, s) {
     $(`${p}-collect-name`).checked = !!s.collect_name;
     $(`${p}-collect-email`).checked = !!s.collect_email;
     $(`${p}-collect-phone`).checked = !!s.collect_phone;
+    $(`${p}-contact-timing`).value = s.contact_timing || 'end';
+    $(`${p}-contact-prompt`).value = s.contact_prompt || '';
     $(`${p}-briefing-title`).value = s.briefing_title || '';
     $(`${p}-briefing-text`).value = s.briefing_text || '';
     const bt = s.briefing_type || 'none';

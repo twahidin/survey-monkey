@@ -69,6 +69,8 @@ class Survey(Base):
     collect_name = Column(Boolean, default=False, nullable=False, server_default="false")
     collect_email = Column(Boolean, default=False, nullable=False, server_default="false")
     collect_phone = Column(Boolean, default=False, nullable=False, server_default="false")
+    contact_timing = Column(String(10), default="end", nullable=False, server_default="start")  # "start" | "end"
+    contact_prompt = Column(Text, nullable=True)          # organiser's explanation of why details are requested
     survey_type = Column(String(30), nullable=True)      # "general_sensing" | "categorising" | "depth_survey"
     questions = Column(Text, nullable=True)               # what to ask participants
     instructions = Column(Text, nullable=True)            # how the bot should behave
