@@ -398,8 +398,19 @@ SHOW_INTERACTIVE_TOOL = {
 SURVEY_TOOLS = [STOCK_IMAGE_TOOL, SHOW_BUTTONS_TOOL, SHOW_VIDEO_TOOL]
 
 
-def build_survey_tools(cfg: LLMConfig, slide_count: int = 0) -> list:
-    tools = [SHOW_BUTTONS_TOOL, SHOW_INTERACTIVE_TOOL]
+# Survey types where in-chat interactive checks (MCQ, fill-in-the-blank, ...) make sense.
+# Plain surveys, reflections and sensing conversations only get text and option buttons.
+INTERACTIVE_SURVEY_TYPES = {"guided_learning", "formative_assessment"}
+
+
+def survey_uses_interactives(survey: Survey) -> bool:
+    return (survey.survey_type or "") in INTERACTIVE_SURVEY_TYPES
+
+
+def build_survey_tools(cfg: LLMConfig, slide_count: int = 0, interactive: bool = False) -> list:
+    tools = [SHOW_BUTTONS_TOOL]
+    if interactive:
+        tools.append(SHOW_INTERACTIVE_TOOL)
     if slide_count:
         tools.append(SHOW_SLIDE_TOOL)
     if cfg.image_mode == "generate":
@@ -411,13 +422,16 @@ def build_survey_tools(cfg: LLMConfig, slide_count: int = 0) -> list:
     return tools
 
 
-def build_tool_prompt(cfg: LLMConfig, slide_count: int = 0) -> str:
+def build_tool_prompt(cfg: LLMConfig, slide_count: int = 0, interactive: bool = False) -> str:
     lines = [
         "\n\n[TOOLS: You have tools to enrich the conversation. "
-        "Use show_buttons when a question has clear discrete choices (frequency, ratings, yes/no, pick-one). "
-        "Use show_interactive for quick understanding checks (mcq, fill_blank, order, match, scale); the participant's result "
-        "arrives as a message starting with [Interactive] — respond to it (confirm, correct gently, or build on it) before moving on."
+        "Use show_buttons when a question has clear discrete choices (frequency, ratings, yes/no, pick-one)."
     ]
+    if interactive:
+        lines.append(
+            "Use show_interactive for quick understanding checks (mcq, fill_blank, order, match, scale); the participant's result "
+            "arrives as a message starting with [Interactive] — respond to it (confirm, correct gently, or build on it) before moving on."
+        )
     if slide_count:
         lines.append(
             f"The briefing deck has {slide_count} slides and their text is listed under DECK CONTENT. "
@@ -1783,7 +1797,7 @@ def _build_chat_system(survey: Survey, cfg: LLMConfig, slides: list = None) -> s
             f"\n\n[DECK CONTENT — the briefing deck has {len(slides)} slides. Text of each slide:\n"
             + deck_context(slides) + "\n]"
         )
-    return system + CONVERSATIONAL_PROMPT + build_tool_prompt(cfg, len(slides))
+    return system + CONVERSATIONAL_PROMPT + build_tool_prompt(cfg, len(slides), survey_uses_interactives(survey))
 
 
 @app.post("/api/survey/join")
@@ -1809,7 +1823,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
             + survey.facilitator_intro.strip()
             + "\n]"
         )
-    tools = build_survey_tools(cfg, len(slides))
+    tools = build_survey_tools(cfg, len(slides), survey_uses_interactives(survey))
     try:
         result = await complete_chat(
             cfg, system,
@@ -1856,7 +1870,7 @@ async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, par
     """Stream text + tool results as SSE events."""
     full_text = []
     tool_events = []
-    tools = build_survey_tools(cfg, slide_count)
+    tools = build_survey_tools(cfg, slide_count, survey_uses_interactives(survey))
     try:
         async for ev in stream_chat(cfg, system, history, tools=tools if not near_limit else None, max_tokens=1024):
             if ev["type"] == "text":
