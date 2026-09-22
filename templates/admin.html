@@ -581,7 +581,7 @@ const SURVEY_TYPE_CONFIG = {
 };
 const IMAGE_MODE_INFO = {
     none: ['No visuals', 'Chat only. The visual panel stays hidden.'],
-    stock: ['Stock photos', 'Real photos from Unsplash when a visual helps. Needs the Unsplash key on the server.'],
+    stock: ['Stock photos', 'Real photos from Unsplash when a visual helps. Needs an Unsplash key on the server.'],
     generate: ['AI-generated illustrations', 'The chatbot creates an image for each question or scenario.'],
 };
 const BRIEFING_TYPES = [
@@ -841,8 +841,17 @@ function fillForm(p, s) {
     onLlmProviderChange(p);
 }
 
+function defaultImageMode() {
+    return (accountSettings && accountSettings.stock_images_available === false) ? 'generate' : 'stock';
+}
+function markStockAvailability(p) {
+    const card = document.querySelector(`#${p}-image-cards .radio-card[data-value="stock"] .rc-desc`);
+    if (!card || !accountSettings) return;
+    if (accountSettings.stock_images_available === false) card.innerHTML = 'Not set up on this server (no Unsplash key), so no photos would appear. Choose <b>AI-generated illustrations</b> — Pollinations is free and needs no key.';
+}
 function resetForm(p) {
-    fillForm(p, { max_messages: 20, image_mode: 'stock', briefing_type: 'none' });
+    fillForm(p, { max_messages: 20, image_mode: defaultImageMode(), briefing_type: 'none' });
+    markStockAvailability(p);
     if (p === 'new') { $('new-code').value = ''; }
     ['refine'].forEach(k => { const e = $(`${p}-${k}`); if (e) e.value = ''; });
     const prev = $(`${p}-image-preview`); if (prev) { prev.classList.add('hidden'); prev.src = ''; }
@@ -941,6 +950,7 @@ async function testImage(p) {
 
 async function openCreateModal() {
     if (!$('new-form').innerHTML) $('new-form').innerHTML = buildSurveyForm('new');
+    if (!accountSettings) { try { await loadAccountSettings(); } catch (e) { /* optional */ } }
     draftSuspended.new = true;
     try {
         resetForm('new');
@@ -1291,7 +1301,9 @@ async function refreshDetail() {
 
     draftSuspended.edit = true;
     try {
+        if (!accountSettings) { try { await loadAccountSettings(); } catch (e) { /* optional */ } }
         fillForm('edit', s);
+        markStockAvailability('edit');
         const legacy = $('edit-legacy-prompt-section');
         if (!s.survey_type && s.system_prompt) { $('edit-prompt').value = s.system_prompt || ''; legacy.classList.remove('hidden'); }
         else legacy.classList.add('hidden');

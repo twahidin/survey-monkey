@@ -164,6 +164,8 @@
             border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; overflow: hidden;
         }
         .visual-stage img, .visual-stage video { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; display: block; }
+        .visual-stage .stage-embed { width: 100%; max-height: 100%; display: flex; align-items: center; justify-content: center; padding: 10px; }
+        .visual-stage .stage-embed .embed { width: 100%; max-height: 100%; }
         .visual-stage .placeholder { text-align: center; color: var(--muted); padding: 24px; font-size: .9rem; max-width: 260px; }
         .visual-stage .placeholder svg { width: 40px; height: 40px; margin-bottom: 8px; color: var(--border-2); }
         .visual-stage.loading::after {
@@ -444,6 +446,7 @@ let pendingOpeningMessage = null, pendingOpeningEvents = null;
 let surveyTitle = 'Survey', surveyTopic = '';
 let briefing = { type: 'none', url: '', text: '', title: '' };
 let imageMode = 'stock';
+let imagesAvailable = true, firstSlide = null;
 let mediaHistory = [];
 let activeMediaIdx = -1;
 
@@ -569,9 +572,13 @@ function renderMediaAt(idx) {
     activeMediaIdx = idx;
     const stage = document.getElementById('visual-stage');
     const ph = document.getElementById('visual-placeholder');
-    stage.querySelectorAll('img, video').forEach(n => n.remove());
+    stage.querySelectorAll('img, video, .stage-embed').forEach(n => n.remove());
     ph.style.display = 'none';
-    if (data.type === 'image') {
+    if (data.type === 'embed') {
+        const wrap = document.createElement('div'); wrap.className = 'stage-embed';
+        wrap.innerHTML = data.html || '';
+        stage.insertBefore(wrap, ph);
+    } else if (data.type === 'image') {
         const img = document.createElement('img');
         img.src = data.url; img.alt = data.alt || data.caption || '';
         stage.insertBefore(img, ph);
@@ -601,6 +608,7 @@ function renderThumbs() {
         b.className = i === activeMediaIdx ? 'active' : '';
         b.title = m.slide ? `Slide ${m.slide}` + (m.caption ? ' · ' + m.caption : '') : (m.caption || m.alt || '');
         if (m.type === 'image') { const im = document.createElement('img'); im.src = m.url; im.alt = ''; b.appendChild(im); }
+        else if (m.type === 'embed') { b.innerHTML = '<span class="vid">Brief</span>'; }
         else { b.innerHTML = '<span class="vid">Video</span>'; }
         b.onclick = () => renderMediaAt(i);
         wrap.appendChild(b);
@@ -616,9 +624,18 @@ function toggleVisual() {
 
 function configureVisualPanel() {
     const panel = document.getElementById('visual-panel');
-    const off = imageMode === 'none' && mediaHistory.length === 0;
+    const off = mediaHistory.length === 0 && (imageMode === 'none' || !imagesAvailable) && !firstSlide;
     panel.classList.toggle('off', off);
     document.getElementById('workspace').classList.toggle('no-visual', off);
+}
+// Put something useful in the visual panel from the first second: slide 1 of the deck, or the briefing media.
+function seedVisualPanel() {
+    if (mediaHistory.length) return;
+    if (firstSlide && firstSlide.url) {
+        showMedia({ type: 'image', url: firstSlide.url, alt: 'Slide 1', slide: 1, slide_total: firstSlide.total, caption: briefing.title || 'Your briefing deck' }, true);
+    } else if (briefing && briefing.type && briefing.type !== 'none' && briefing.url) {
+        showMedia({ type: 'embed', html: buildEmbed(briefing.type, briefing.url), caption: briefing.title || 'Task briefing' }, true);
+    }
 }
 
 // ── Button options ──
@@ -909,6 +926,7 @@ function startChat() {
     document.getElementById('survey-title').textContent = surveyTitle;
     document.getElementById('survey-topic').textContent = surveyTopic || '';
     document.getElementById('briefing-btn').classList.toggle('hidden', !hasBriefing());
+    seedVisualPanel();
     configureVisualPanel();
     updateProgress();
     show('chat-screen');
@@ -943,6 +961,7 @@ async function joinSurvey() {
         surveyTitle = data.survey_title; surveyTopic = data.survey_topic || '';
         maxMessages = data.max_messages || maxMessages;
         imageMode = data.image_mode || 'stock';
+        imagesAvailable = data.images_available !== false; firstSlide = data.first_slide || null;
         briefing = data.briefing || briefing;
         pendingOpeningMessage = data.opening_message;
         pendingOpeningEvents = data.opening_events || [];
@@ -1116,18 +1135,22 @@ function replayToolEvents(content) {
                 contactTiming = data.contact_timing || 'start'; contactPrompt = data.contact_prompt || ''; contactDone = !!data.contact_done;
                 surveyTitle = data.survey_title; surveyTopic = data.survey_topic || '';
                 imageMode = data.image_mode || 'stock';
+                imagesAvailable = data.images_available !== false; firstSlide = data.first_slide || null;
                 briefing = data.briefing || briefing;
                 document.getElementById('survey-title').textContent = surveyTitle;
                 document.getElementById('survey-topic').textContent = surveyTopic;
                 document.getElementById('briefing-btn').classList.toggle('hidden', !hasBriefing());
-                configureVisualPanel();
-                updateProgress();
-                show('chat-screen');
+                seedVisualPanel();
                 for (const m of data.messages) {
                     if (m.content.startsWith('[TOOL_EVENTS]')) replayToolEvents(m.content);
                     else if (m.role === 'assistant' && m.content !== '(presented interactive content)') addMessage('assistant', m.content);
                     else if (m.role === 'user' && !m.content.startsWith('(The participant has just joined')) addMessage('user', m.content);
                 }
+                configureVisualPanel();
+                updateProgress();
+                // Reopened the link before answering anything: show the briefing again first.
+                if (userMsgCount === 0 && hasBriefing()) showBriefingScreen();
+                else show('chat-screen');
                 const msgs = document.getElementById('messages');
                 msgs.scrollTop = msgs.scrollHeight;
                 return;

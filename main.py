@@ -1782,6 +1782,19 @@ async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin
 #  PUBLIC - PARTICIPANT CHAT
 # ══════════════════════════════════════════════════════════════════
 
+def _visual_payload(db: Session, survey: Survey, image_mode: str) -> dict:
+    """What the participant page can show in the visual panel: whether images will come, and the first slide if any."""
+    first = db.query(MediaAsset.id).filter(MediaAsset.survey_id == survey.id, MediaAsset.kind == "slide", MediaAsset.page_index == 1).first()
+    total = 0
+    if first:
+        total = db.query(func.count(MediaAsset.id)).filter(MediaAsset.survey_id == survey.id, MediaAsset.kind == "slide").scalar() or 0
+    images_available = image_mode == "generate" or (image_mode == "stock" and bool(UNSPLASH_ACCESS_KEY))
+    return {
+        "images_available": images_available,
+        "first_slide": {"url": f"/api/assets/{first.id}", "total": int(total)} if first else None,
+    }
+
+
 def _briefing_payload(survey: Survey) -> dict:
     return {
         "type": survey.briefing_type or "none",
@@ -1835,7 +1848,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     try:
         result = await complete_chat(
             cfg, system,
-            [{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin with the first question. Always include a written greeting — do not rely solely on tools.)"}],
+            [{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin with the first question. Always include a written greeting — do not rely solely on tools. If you have a show_slide or show_image tool, use it in this first message as well so the visual panel is not empty.)"}],
             tools=tools, max_tokens=1024,
         )
     except LLMError as e:
@@ -1873,6 +1886,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
         "contact_prompt": survey.contact_prompt or "",
         "image_mode": cfg.image_mode,
         "briefing": _briefing_payload(survey),
+        **_visual_payload(db, survey, cfg.image_mode),
     }
 
 
@@ -1944,7 +1958,7 @@ def resume_survey_session(req: ResumeSessionRequest, db: Session = Depends(get_d
         raise HTTPException(status_code=400, detail="Survey has been closed")
 
     msgs = sorted(participant.messages, key=lambda m: m.created_at)
-    user_msg_count = sum(1 for m in msgs if m.role == "user")
+    user_msg_count = sum(1 for m in msgs if m.role == "user" and not m.content.startswith("(The participant has just joined"))
     survey = participant.survey
     return {
         "session_token": participant.session_token,
@@ -1960,6 +1974,7 @@ def resume_survey_session(req: ResumeSessionRequest, db: Session = Depends(get_d
         "user_message_count": user_msg_count,
         "image_mode": survey.image_mode or "stock",
         "briefing": _briefing_payload(survey),
+        **_visual_payload(db, survey, survey.image_mode or "stock"),
         "messages": [
             {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
             for m in msgs
@@ -1997,7 +2012,7 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     ]
     history.append({"role": "user", "content": message})
 
-    user_message_count = sum(1 for m in history if m["role"] == "user")
+    user_message_count = sum(1 for m in history if m["role"] == "user" and not m["content"].startswith("(The participant has just joined"))
     near_limit = user_message_count >= participant.survey.max_messages
 
     survey = participant.survey
@@ -2116,6 +2131,7 @@ def get_settings(db: Session = Depends(get_db), admin: AdminUser = Depends(get_c
             "openrouter": {"chat": default_model("openrouter"), "analysis": default_model("openrouter", analysis=True)},
         },
         "image_providers": IMAGE_PROVIDERS,
+        "stock_images_available": bool(UNSPLASH_ACCESS_KEY),
     }
 
 
