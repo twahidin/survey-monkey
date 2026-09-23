@@ -304,7 +304,8 @@
                 <div><h2>Your Surveys</h2><div class="kv">Conversational surveys, reflections and check-ins for classrooms, teams and communities.</div></div>
                 <div style="display:flex;gap:8px">
                     <button class="btn btn-outline admin-only" onclick="openTeachersModal()">Facilitators</button>
-                    <button class="btn" id="new-survey-btn" onclick="openCreateModal()">+ New Survey</button>
+                    <button class="btn btn-outline hidden" id="resume-draft-btn" onclick="openCreateModal()" title="Continue the survey you were building">▸ Resume draft</button>
+                    <button class="btn" id="new-survey-btn" onclick="openCreateModal(true)">+ New Survey</button>
                 </div>
             </div>
             <div class="survey-grid" id="survey-grid"></div>
@@ -948,7 +949,11 @@ async function testImage(p) {
     } catch (e) { status.textContent = 'Failed: ' + e.message; }
 }
 
-async function openCreateModal() {
+async function openCreateModal(fresh) {
+    if (fresh && loadDraft('new')) {
+        if (!confirm('You have an unfinished draft. Start a new survey and discard that draft?\n\n(Choose Cancel to resume the draft instead.)')) { fresh = false; }
+        else clearDraft('new');
+    }
     if (!$('new-form').innerHTML) $('new-form').innerHTML = buildSurveyForm('new');
     if (!accountSettings) { try { await loadAccountSettings(); } catch (e) { /* optional */ } }
     draftSuspended.new = true;
@@ -1078,11 +1083,9 @@ async function discardDraft(p) {
     else await refreshDetail();
 }
 function updateNewSurveyButton() {
-    const btn = $('new-survey-btn');
-    if (!btn) return;
-    const has = !!loadDraft('new');
-    btn.textContent = has ? '▸ Resume draft' : '+ New Survey';
-    btn.title = has ? 'You have an unfinished survey draft' : '';
+    const resume = $('resume-draft-btn');
+    if (!resume) return;
+    resume.classList.toggle('hidden', !loadDraft('new'));
 }
 function initDraftAutosave() {
     ['new', 'edit'].forEach(p => {
