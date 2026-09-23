@@ -305,6 +305,7 @@
                 <div style="display:flex;gap:8px">
                     <button class="btn btn-outline admin-only" onclick="openTeachersModal()">Facilitators</button>
                     <button class="btn btn-outline hidden" id="resume-draft-btn" onclick="openCreateModal()" title="Continue the survey you were building">▸ Resume draft</button>
+                    <button class="btn btn-outline btn-danger hidden" id="delete-draft-btn" onclick="deleteDraftFromList()" title="Throw away the unfinished draft">Delete draft</button>
                     <button class="btn" id="new-survey-btn" onclick="openCreateModal(true)">+ New Survey</button>
                 </div>
             </div>
@@ -1083,9 +1084,14 @@ async function discardDraft(p) {
     else await refreshDetail();
 }
 function updateNewSurveyButton() {
-    const resume = $('resume-draft-btn');
-    if (!resume) return;
-    resume.classList.toggle('hidden', !loadDraft('new'));
+    const has = !!loadDraft('new');
+    ['resume-draft-btn', 'delete-draft-btn'].forEach(id => { const b = $(id); if (b) b.classList.toggle('hidden', !has); });
+}
+function deleteDraftFromList() {
+    const d = loadDraft('new');
+    const title = d && d.fields && (d.fields['new-title'] || d.fields['wz-goal']);
+    if (!confirm(`Delete the unfinished draft${title ? ` "${String(title).slice(0, 60)}"` : ''}? This cannot be undone.`)) return;
+    clearDraft('new');
 }
 function initDraftAutosave() {
     ['new', 'edit'].forEach(p => {
