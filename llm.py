@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_CHAT_MODEL = os.environ.get("CLAUDE_CHAT_MODEL", "claude-sonnet-5")
-CLAUDE_ANALYSIS_MODEL = os.environ.get("CLAUDE_ANALYSIS_MODEL", "claude-opus-5")
+CLAUDE_ANALYSIS_MODEL = os.environ.get("CLAUDE_ANALYSIS_MODEL", "claude-opus-5-5")
 
 ANTHROPIC_WORKSPACE_ID = os.environ.get("ANTHROPIC_WORKSPACE_ID", "").strip()
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
