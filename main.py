@@ -1479,7 +1479,7 @@ async def analyze_survey(
         for analysis in (True, False):
             full_text = []
             try:
-                async for ev in stream_chat(cfg, system_prompt, history, tools=None, max_tokens=4096, analysis=analysis):
+                async for ev in stream_chat(cfg, system_prompt, history, tools=None, max_tokens=8192, analysis=analysis):
                     if ev["type"] == "text":
                         full_text.append(ev["text"])
                         yield f"data: {json.dumps({'t': 'chunk', 'v': ev['text']})}\n\n"
@@ -1561,24 +1561,34 @@ def delete_analysis_messages(
 #  ADMIN - SURVEY INSIGHTS (AI-generated analytics)
 # ══════════════════════════════════════════════════════════════════
 
+INSIGHTS_MSG_CHARS = 1500          # per message
+INSIGHTS_PROMPT_CHARS = 600_000     # whole transcript block (~150k tokens)
+
+
 def _build_insights_prompt(survey, participants_data: list) -> str:
     convos = []
     for p in participants_data:
         if p["messages"]:
-            msgs = "\n".join(
-                f"  {m['role']}: {m['content']}"
-                for m in p["messages"]
-                if not m["content"].startswith("[TOOL_EVENTS]")
-            )
-            convos.append(f"[Participant {p['id'][:8]} | {p['status']} | {p['message_count']} msgs]\n{msgs}")
+            lines = []
+            for m in p["messages"]:
+                if m["content"].startswith("[TOOL_EVENTS]") or m["content"].startswith("(The participant has just joined"):
+                    continue
+                text = m["content"]
+                if len(text) > INSIGHTS_MSG_CHARS:
+                    text = text[:INSIGHTS_MSG_CHARS] + " …"
+                lines.append(f"  {m['role']}: {text}")
+            convos.append(f"[Participant {p['id'][:8]} | {p['status']} | {p['message_count']} msgs]\n" + "\n".join(lines))
+    transcript = "\n\n".join(convos)
+    if len(transcript) > INSIGHTS_PROMPT_CHARS:
+        transcript = transcript[:INSIGHTS_PROMPT_CHARS] + "\n\n[… transcript truncated for length …]"
 
     return (
         f"Analyze these survey conversations and return a JSON object.\n\n"
         f"Survey: {survey.title}\nTopic: {survey.topic}\n"
         f"System Prompt: {survey.system_prompt}\n"
         f"Total participants: {len(participants_data)}\n\n"
-        f"--- CONVERSATIONS ---\n\n" + "\n\n".join(convos) + "\n\n"
-        f"Return ONLY valid JSON with this exact structure:\n"
+        f"--- CONVERSATIONS ---\n\n" + transcript + "\n\n"
+        f"Return ONLY valid JSON with this exact structure (include every participant id; keep theme names to a few words):\n"
         f'{{\n'
         f'  "sentiment": {{"positive": <count>, "neutral": <count>, "negative": <count>}},\n'
         f'  "themes": [{{"name": "<theme>", "count": <mentions>}}, ...],\n'
@@ -1616,11 +1626,11 @@ async def _generate_insights(survey, db: Session) -> dict:
     logger.info(f"Generating insights for survey {survey.id}: {len(participants_data)} participants, provider={cfg.describe()}, prompt length {len(prompt)} chars")
     insights_system = ANALYST_SYSTEM + "Return ONLY valid JSON, no markdown fences, no explanation."
 
-    raw = ""
+    raw, insights, stop_reason = "", None, ""
     for analysis in (True, False):
         try:
             result = await complete_chat(cfg, insights_system, [{"role": "user", "content": prompt}],
-                                         max_tokens=4096, analysis=analysis)
+                                         max_tokens=16000, analysis=analysis)
         except LLMError as e:
             logger.error(f"Insights generation error ({cfg.describe()}, analysis={analysis}): {e.message}")
             continue
@@ -1628,15 +1638,36 @@ async def _generate_insights(survey, db: Session) -> dict:
             logger.error(f"Insights generation error: {e}", exc_info=True)
             continue
         raw = (result.get("text") or "").strip()
-        if raw:
+        stop_reason = result.get("stop_reason") or ""
+        if not raw:
+            logger.warning("Empty insights response, trying fallback model")
+            continue
+        insights = extract_json_object(raw)
+        if isinstance(insights, dict):
             break
-        logger.warning("Empty insights response, trying fallback model")
+        # The model wrapped or mangled the JSON: ask it once to repair its own output.
+        logger.warning(f"Insights JSON parse failed (stop_reason={stop_reason}, {len(raw)} chars); asking the model to repair. Tail: {raw[-200:]!r}")
+        try:
+            fix = await complete_chat(
+                cfg, insights_system,
+                [{"role": "user", "content": prompt},
+                 {"role": "assistant", "content": raw[-12000:]},
+                 {"role": "user", "content": "That was not valid JSON. Return the complete JSON object only, with no text before or after it."}],
+                max_tokens=16000, analysis=analysis,
+            )
+            insights = extract_json_object((fix.get("text") or "").strip())
+            if isinstance(insights, dict):
+                break
+        except Exception as e:
+            logger.error(f"Insights repair error: {e}")
+        insights = None
 
     if not raw:
         return {**EMPTY_INSIGHTS, "error": "AI could not analyze the conversations — check the provider settings or try regenerating"}
-    insights = extract_json_object(raw)
     if not isinstance(insights, dict):
-        insights = {**EMPTY_INSIGHTS, "error": "Failed to parse insights"}
+        why = "the analysis was cut off before it finished" if stop_reason == "max_tokens" else "the model did not return valid JSON"
+        # Not cached: the next Refresh retries immediately.
+        return {**EMPTY_INSIGHTS, "error": f"Could not read the AI analysis ({why}). Click Refresh to try again."}
 
     existing = db.query(SurveyInsight).filter(SurveyInsight.survey_id == survey.id).first()
     now = datetime.now(timezone.utc)
@@ -1760,7 +1791,7 @@ async def survey_wizard(req: WizardRequest, db: Session = Depends(get_db), admin
     cfg = resolve_llm_config(db, admin=admin)
     try:
         result = await complete_chat(cfg, WIZARD_SYSTEM, [{"role": "user", "content": "\n".join(brief)}],
-                                     max_tokens=3000, analysis=True)
+                                     max_tokens=8000, analysis=True)
     except LLMError as e:
         raise HTTPException(status_code=e.status, detail=e.message)
     data = extract_json_object(result.get("text") or "")
