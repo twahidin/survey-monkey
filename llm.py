@@ -174,16 +174,54 @@ def _wrap_anthropic_error(e: Exception) -> LLMError:
     return LLMError(str(e), 500)
 
 
+# ── Prompt caching ──
+# Render order is tools -> system -> messages. One breakpoint on the system block caches the tool
+# definitions and the system prompt (shared by every turn of a survey and by every participant), and a
+# moving breakpoint on the last message caches the conversation so each turn only pays for what was
+# appended. Cached tokens do not count toward Anthropic's input-tokens-per-minute limit and cost ~10%.
+CACHE_MARK = {"type": "ephemeral"}
+
+
+def _with_cache_markers(system, messages):
+    sys_param = system
+    if isinstance(system, str) and system.strip():
+        sys_param = [{"type": "text", "text": system, "cache_control": dict(CACHE_MARK)}]
+    msgs = [dict(m) for m in messages]
+    if msgs:
+        last = msgs[-1]
+        content = last.get("content")
+        if isinstance(content, str) and content.strip():
+            last["content"] = [{"type": "text", "text": content, "cache_control": dict(CACHE_MARK)}]
+        elif isinstance(content, list) and content and isinstance(content[-1], dict) and content[-1].get("type") == "text":
+            blocks = [dict(b) for b in content]
+            blocks[-1]["cache_control"] = dict(CACHE_MARK)
+            last["content"] = blocks
+    return sys_param, msgs
+
+
+def _log_usage(model: str, usage) -> None:
+    if usage is None:
+        return
+    logger.info(
+        "anthropic usage model=%s input=%s cache_read=%s cache_write=%s output=%s",
+        model, getattr(usage, "input_tokens", None), getattr(usage, "cache_read_input_tokens", None),
+        getattr(usage, "cache_creation_input_tokens", None), getattr(usage, "output_tokens", None),
+    )
+
+
 async def _anthropic_stream(cfg, model, system, messages, tools, max_tokens) -> AsyncIterator[dict]:
     client = _anthropic_client(cfg)
-    kwargs = dict(model=model, max_tokens=max_tokens, system=system, messages=messages)
+    sys_param, msgs = _with_cache_markers(system, messages)
+    kwargs = dict(model=model, max_tokens=max_tokens, system=sys_param, messages=msgs)
     if tools:
         kwargs["tools"] = tools
     tool_uses = {}
     try:
         async with client.messages.stream(**kwargs) as stream:
             async for event in stream:
-                if event.type == "content_block_delta":
+                if event.type == "message_start":
+                    _log_usage(model, getattr(getattr(event, "message", None), "usage", None))
+                elif event.type == "content_block_delta":
                     delta = event.delta
                     if delta.type == "text_delta":
                         yield {"type": "text", "text": delta.text}
@@ -206,13 +244,15 @@ async def _anthropic_stream(cfg, model, system, messages, tools, max_tokens) -> 
 
 async def _anthropic_complete(cfg, model, system, messages, tools, max_tokens) -> dict:
     client = _anthropic_client(cfg)
-    kwargs = dict(model=model, max_tokens=max_tokens, system=system, messages=messages)
+    sys_param, msgs = _with_cache_markers(system, messages)
+    kwargs = dict(model=model, max_tokens=max_tokens, system=sys_param, messages=msgs)
     if tools:
         kwargs["tools"] = tools
     try:
         response = await client.messages.create(**kwargs)
     except anthropic.APIError as e:
         raise _wrap_anthropic_error(e)
+    _log_usage(model, getattr(response, "usage", None))
     text_parts, tool_calls = [], []
     for block in response.content:
         if block.type == "text":

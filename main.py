@@ -39,6 +39,7 @@ from report import (
     build_survey_report_html, build_survey_report_docx, build_participant_report_html,
 )
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 APP_NAME = os.environ.get("APP_NAME", "Ponder")
@@ -1915,20 +1916,18 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     cfg = resolve_llm_config(db, survey)
     slides = _survey_slides(db, survey.id)
     system = _build_chat_system(survey, cfg, slides)
+    # The system prompt stays byte-identical for the whole session (prompt caching); per-turn instructions go in the user turn.
     intro = (survey.facilitator_intro or "").strip()
-    if intro:
-        system += (
-            "\n\n[Begin your very first message with this introduction, word for word, then ask the first question:\n"
-            + intro
-            + "\n]"
-        )
+    join_prompt = (
+        "(The participant has just joined the survey. Greet them warmly with a text message and begin with the first question. "
+        "Always include a written greeting — do not rely solely on tools. If you have a show_slide or show_image tool, use it in "
+        "this first message as well so the visual panel is not empty."
+        + (f"\nBegin your very first message with this introduction, word for word, then ask the first question:\n{intro}" if intro else "")
+        + ")"
+    )
     tools = build_survey_tools(cfg, len(slides), survey_uses_interactives(survey))
     try:
-        result = await complete_chat(
-            cfg, system,
-            [{"role": "user", "content": "(The participant has just joined the survey. Greet them warmly with a text message and begin with the first question. Always include a written greeting — do not rely solely on tools. If you have a show_slide or show_image tool, use it in this first message as well so the visual panel is not empty.)"}],
-            tools=tools, max_tokens=1024,
-        )
+        result = await complete_chat(cfg, system, [{"role": "user", "content": join_prompt}], tools=tools, max_tokens=1024)
     except LLMError as e:
         db.delete(participant)
         db.commit()
@@ -1991,7 +1990,8 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
     try:
         tools = build_survey_tools(cfg, slide_count, survey_type in INTERACTIVE_SURVEY_TYPES)
         try:
-            async for ev in stream_chat(cfg, system, history, tools=tools if not near_limit else None, max_tokens=1024):
+            # Tools stay in every request (they sit at the front of the cached prefix); the final-turn note tells the model not to use them.
+            async for ev in stream_chat(cfg, system, history, tools=tools, max_tokens=1024):
                 if ev["type"] == "text":
                     full_text.append(ev["text"])
                     await queue.put({"t": "chunk", "v": ev["text"]})
@@ -2149,12 +2149,13 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     cfg = resolve_llm_config(db, survey)
     slides = _survey_slides(db, survey.id)
     system = _build_chat_system(survey, cfg, slides)
-    if near_limit:
-        system += (
+    if near_limit and history and history[-1]["role"] == "user":
+        # Appended to the user turn rather than the system prompt so the cached prefix stays intact.
+        history[-1] = {"role": "user", "content": history[-1]["content"] + (
             "\n\n[SYSTEM NOTE: This is the participant's last allowed message. "
             "Thank them for their time, provide a brief summary of what you gathered, "
             "and end the conversation warmly. Do not use tools in this final message.]"
-        )
+        )}
 
     gen = _chat_stream_generator(cfg, system, history, participant, survey, db, near_limit, len(slides))
     return StreamingResponse(
