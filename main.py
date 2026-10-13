@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import case, func
 
-from database import get_db, init_db
+from database import get_db, init_db, SessionLocal
 from models import (
     Survey, SurveyStatus, Participant, ParticipantStatus,
     ChatMessage, AdminUser, AnalysisMessage, SurveyInsight, InviteCode, MediaAsset,
@@ -54,7 +54,8 @@ MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
 CONVERSATIONAL_PROMPT = (
     "\n\n[STYLE: Be warm, encouraging and conversational, like a skilled facilitator leading a discussion. "
     "Keep your replies short so the participant does most of the talking. "
-    "Ask one question at a time. Often ask brief follow-ups to draw out more thinking "
+    "Ask one question at a time: never ask a follow-up and then move on to the next question in the same message — "
+    "if you ask a follow-up, wait for the answer. Often ask brief follow-ups to draw out more thinking "
     "(e.g. 'What made you think that?', 'Can you give an example?', 'How did that feel?'). "
     "Reflect back what they share and invite elaboration. "
     "Your goal is to elicit genuine reflection and richer responses, not to rush through questions.]"
@@ -707,7 +708,8 @@ class JoinSurveyRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     session_token: str
-    message: str
+    message: str = ""
+    resume_reply: bool = False   # fetch the reply to the last stored participant message without sending a new one
 
 class ContactInfoRequest(BaseModel):
     session_token: str
@@ -1973,55 +1975,89 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     }
 
 
-async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant, survey, db, near_limit: bool, slide_count: int = 0):
-    """Stream text + tool results as SSE events."""
-    full_text = []
-    tool_events = []
-    tools = build_survey_tools(cfg, slide_count, survey_uses_interactives(survey))
+STREAM_PING_SECONDS = 15
+_pending_replies: set = set()   # participant ids with a reply being generated right now
+
+
+async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, history: list,
+                         participant_id, survey_id, survey_type, near_limit: bool, slide_count: int):
+    """Generate the assistant reply and persist it, pushing SSE events to the queue as they happen.
+
+    Runs as a detached task with its own DB session, so a phone that loses signal mid-reply
+    does not lose the reply: it is saved anyway and the page picks it up on retry or reload.
+    """
+    full_text, tool_events = [], []
+    db = SessionLocal()
     try:
-        async for ev in stream_chat(cfg, system, history, tools=tools if not near_limit else None, max_tokens=1024):
-            if ev["type"] == "text":
-                full_text.append(ev["text"])
-                yield f"data: {json.dumps({'t': 'chunk', 'v': ev['text']})}\n\n"
-            elif ev["type"] == "tool_use":
-                if ev["name"] == "show_image" and cfg.image_mode == "generate":
-                    yield f"data: {json.dumps({'t': 'status', 'v': 'Creating an illustration…'})}\n\n"
-                events = await _process_tool_call(ev["name"], ev["input"], cfg, db, survey.id, participant.id)
-                tool_events.extend(events)
-                for event in events:
-                    yield f"data: {json.dumps(event)}\n\n"
-        yield f"data: {json.dumps({'t': 'status', 'v': ''})}\n\n"
-    except LLMError as e:
-        yield f"data: {json.dumps({'t': 'error', 'v': e.message})}\n\n"
-        return
+        tools = build_survey_tools(cfg, slide_count, survey_type in INTERACTIVE_SURVEY_TYPES)
+        try:
+            async for ev in stream_chat(cfg, system, history, tools=tools if not near_limit else None, max_tokens=1024):
+                if ev["type"] == "text":
+                    full_text.append(ev["text"])
+                    await queue.put({"t": "chunk", "v": ev["text"]})
+                elif ev["type"] == "tool_use":
+                    if ev["name"] == "show_image" and cfg.image_mode == "generate":
+                        await queue.put({"t": "status", "v": "Creating an illustration…"})
+                    events = await _process_tool_call(ev["name"], ev["input"], cfg, db, survey_id, participant_id)
+                    tool_events.extend(events)
+                    for event in events:
+                        await queue.put(event)
+            await queue.put({"t": "status", "v": ""})
+        except LLMError as e:
+            await queue.put({"t": "error", "v": e.message})
+            return
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}", exc_info=True)
+            await queue.put({"t": "error", "v": "Something went wrong. Please try again."})
+            return
+
+        assistant_text = "".join(full_text).strip()
+        if not assistant_text and tool_events:
+            assistant_text = await _ensure_spoken_text(cfg, system, history, tool_events)
+            if assistant_text:
+                await queue.put({"t": "chunk", "v": assistant_text})
+            else:
+                assistant_text = "(presented interactive content)"
+        if not assistant_text:
+            assistant_text = "Could you tell me a bit more about that?"
+            await queue.put({"t": "chunk", "v": assistant_text})
+
+        participant = db.query(Participant).filter(Participant.id == participant_id).first()
+        db.add(ChatMessage(participant_id=participant_id, role="assistant", content=assistant_text))
+        if tool_events:
+            db.add(ChatMessage(participant_id=participant_id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
+        is_complete = near_limit
+        if is_complete and participant:
+            now = datetime.now(timezone.utc)
+            participant.status = ParticipantStatus.COMPLETED
+            participant.completed_at = now
+            participant.duration_seconds = (now - participant.started_at).total_seconds()
+        db.commit()
+        await queue.put({"t": "done", "is_complete": is_complete})
     except Exception as e:
-        logger.error(f"Chat stream error: {e}", exc_info=True)
-        yield f"data: {json.dumps({'t': 'error', 'v': 'Something went wrong. Please try again.'})}\n\n"
-        return
+        logger.error(f"Reply producer failed: {e}", exc_info=True)
+        await queue.put({"t": "error", "v": "Something went wrong. Please try again."})
+    finally:
+        db.close()
+        _pending_replies.discard(participant_id)
+        await queue.put(None)
 
-    assistant_text = "".join(full_text).strip()
-    if not assistant_text and tool_events:
-        assistant_text = await _ensure_spoken_text(cfg, system, history, tool_events)
-        if assistant_text:
-            yield f"data: {json.dumps({'t': 'chunk', 'v': assistant_text})}\n\n"
-        else:
-            assistant_text = "(presented interactive content)"
-    if not assistant_text:
-        assistant_text = "Could you tell me a bit more about that?"
-        yield f"data: {json.dumps({'t': 'chunk', 'v': assistant_text})}\n\n"
 
-    db.add(ChatMessage(participant_id=participant.id, role="assistant", content=assistant_text))
-    if tool_events:
-        db.add(ChatMessage(participant_id=participant.id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
-
-    is_complete = near_limit
-    if is_complete:
-        now = datetime.now(timezone.utc)
-        participant.status = ParticipantStatus.COMPLETED
-        participant.completed_at = now
-        participant.duration_seconds = (now - participant.started_at).total_seconds()
-    db.commit()
-    yield f"data: {json.dumps({'t': 'done', 'is_complete': is_complete})}\n\n"
+async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant, survey, db, near_limit: bool, slide_count: int = 0):
+    """SSE response: relays producer events and sends keep-alive pings while the model is thinking."""
+    queue: asyncio.Queue = asyncio.Queue()
+    _pending_replies.add(participant.id)
+    asyncio.create_task(_produce_reply(queue, cfg, system, history, participant.id, survey.id,
+                                       survey.survey_type or "", near_limit, slide_count))
+    while True:
+        try:
+            item = await asyncio.wait_for(queue.get(), timeout=STREAM_PING_SECONDS)
+        except asyncio.TimeoutError:
+            yield ": ping\n\n"      # SSE comment: keeps mobile carriers and proxies from closing an idle connection
+            continue
+        if item is None:
+            return
+        yield f"data: {json.dumps(item)}\n\n"
 
 
 class ResumeSessionRequest(BaseModel):
@@ -2085,19 +2121,26 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     if participant.survey.status != SurveyStatus.ACTIVE:
         raise HTTPException(status_code=400, detail="This survey has been closed")
     message = (req.message or "").strip()
-    if not message:
-        raise HTTPException(status_code=400, detail="Message is empty")
-
-    db.add(ChatMessage(participant_id=participant.id, role="user", content=message))
-    db.commit()
-
     msgs = sorted(participant.messages, key=lambda m: m.created_at)
     history = [
         {"role": m.role, "content": m.content}
         for m in msgs
         if not m.content.startswith("[TOOL_EVENTS]")
     ]
-    history.append({"role": "user", "content": message})
+    if req.resume_reply:
+        # The page lost the connection mid-reply. If the reply was saved in the meantime, or is still being
+        # generated, there is nothing to redo; otherwise answer the last stored participant message.
+        if participant.id in _pending_replies or not history or history[-1]["role"] != "user":
+            async def _nothing():
+                yield f"data: {json.dumps({'t': 'done', 'is_complete': False, 'noop': True})}\n\n"
+            return StreamingResponse(_nothing(), media_type="text/event-stream",
+                                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    else:
+        if not message:
+            raise HTTPException(status_code=400, detail="Message is empty")
+        db.add(ChatMessage(participant_id=participant.id, role="user", content=message))
+        db.commit()
+        history.append({"role": "user", "content": message})
 
     user_message_count = sum(1 for m in history if m["role"] == "user" and not m["content"].startswith("(The participant has just joined"))
     near_limit = user_message_count >= participant.survey.max_messages

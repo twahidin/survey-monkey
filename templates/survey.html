@@ -666,7 +666,7 @@ function renderButtons(data, disabled) {
             btn.addEventListener('click', () => {
                 container.querySelectorAll('.option').forEach(b => b.disabled = true);
                 btn.classList.add('selected');
-                sendButtonResponse(opt.value);
+                sendButtonResponse(opt.label);
             });
         }
         container.appendChild(btn);
@@ -678,7 +678,8 @@ function renderButtons(data, disabled) {
         submit.addEventListener('click', () => {
             if (!selected.size) return;
             container.querySelectorAll('.option').forEach(b => b.disabled = true);
-            sendButtonResponse(Array.from(selected).join(', '));
+            const labels = (data.options || []).filter(o => selected.has(o.value)).map(o => o.label);
+            sendButtonResponse(labels.join(', '));
         });
         container.appendChild(submit);
     }
@@ -985,14 +986,21 @@ async function sendMessage() {
     await doStreamRequest(text);
 }
 
-async function doStreamRequest(text) {
+let streamRetries = 0;
+function isNetworkError(e) {
+    const m = String((e && e.message) || e || '').toLowerCase();
+    return (e instanceof TypeError) || /load failed|failed to fetch|network|connection|aborted|offline/.test(m);
+}
+// resume=true asks the server for the reply to the last stored message instead of sending a new one
+// (used after a dropped connection, and on reload when a reply never arrived).
+async function doStreamRequest(text, resume) {
     document.getElementById('send-btn').disabled = true;
     showTyping();
     let streamEl = null;
     try {
         const res = await fetch('/api/survey/chat/stream', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_token: sessionToken, message: text }),
+            body: JSON.stringify(resume ? { session_token: sessionToken, resume_reply: true } : { session_token: sessionToken, message: text }),
         });
         if (!res.ok) {
             hideTyping();
@@ -1001,7 +1009,7 @@ async function doStreamRequest(text) {
         }
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '', hasText = false, completed = false;
+        let buffer = '', hasText = false, completed = false, noop = false;
         const handle = (data) => {
             if (data.t === 'chunk' && data.v) {
                 if (!streamEl) { hideTyping(); streamEl = addStreamingMessage(); }
@@ -1012,7 +1020,7 @@ async function doStreamRequest(text) {
             else if (data.t === 'buttons') { if (streamEl && hasText) streamEl.innerHTML = renderMd(streamEl.textContent); renderButtons(data); }
             else if (data.t === 'interactive') { if (streamEl && hasText) streamEl.innerHTML = renderMd(streamEl.textContent); renderInteractive(data); }
             else if (data.t === 'status') setVisualStatus(data.v || '');
-            else if (data.t === 'done') { if (data.is_complete) completed = true; }
+            else if (data.t === 'done') { if (data.is_complete) completed = true; if (data.noop) noop = true; }
             else if (data.t === 'error') { hideTyping(); addMessage('system', data.v || 'Something went wrong'); }
         };
         while (true) {
@@ -1029,6 +1037,8 @@ async function doStreamRequest(text) {
         if (buffer.startsWith('data: ')) { try { handle(JSON.parse(buffer.slice(6))); } catch (_) {} }
         hideTyping();
         setVisualStatus('');
+        if (noop) { return await syncAfterNoop(text); }
+        streamRetries = 0;
         if (streamEl) {
             if (hasText) streamEl.innerHTML = renderMd(streamEl.textContent);
             else streamEl.parentElement.remove();
@@ -1044,7 +1054,26 @@ async function doStreamRequest(text) {
     } catch (e) {
         hideTyping();
         setVisualStatus('');
-        addMessage('system', e.message);
+        if (streamEl && !streamEl.textContent.trim()) { streamEl.parentElement.remove(); streamEl = null; }
+        if (isNetworkError(e)) {
+            // The connection dropped (common on mobile data). The server keeps generating and saves the reply,
+            // so fetch it again rather than making the participant repeat themselves.
+            if (streamEl) { streamEl.parentElement.remove(); }
+            if (streamRetries < 3) {
+                streamRetries++;
+                const note = addMessage('system', `Connection dropped — reconnecting (${streamRetries}/3)…`);
+                await new Promise(r => setTimeout(r, 1200 * streamRetries));
+                note.remove();
+                return doStreamRequest(text, true);
+            }
+            const note = addMessage('system', 'Connection lost. ');
+            const btn = document.createElement('button'); btn.className = 'option'; btn.textContent = 'Try again';
+            btn.style.marginLeft = '8px';
+            btn.onclick = () => { note.remove(); streamRetries = 0; doStreamRequest(text, true); };
+            note.appendChild(btn);
+        } else {
+            addMessage('system', e.message);
+        }
     } finally {
         if (!document.getElementById('chat-input').disabled) {
             document.getElementById('send-btn').disabled = false;
@@ -1102,6 +1131,43 @@ async function submitContactInfo() {
 }
 function skipContactInfo() { afterContact(); }
 
+// ── Rebuild the chat from the server's stored messages (resume / reconnect) ──
+function renderHistory(messages) {
+    document.getElementById('messages').innerHTML = '';
+    mediaHistory = []; activeMediaIdx = -1;
+    document.getElementById('visual-thumbs').innerHTML = '';
+    seedVisualPanel();
+    for (const m of messages) {
+        if (m.content.startsWith('[TOOL_EVENTS]')) replayToolEvents(m.content);
+        else if (m.role === 'assistant' && m.content !== '(presented interactive content)') addMessage('assistant', m.content);
+        else if (m.role === 'user' && !m.content.startsWith('(The participant has just joined')) addMessage('user', m.content);
+    }
+    const msgs = document.getElementById('messages');
+    msgs.scrollTop = msgs.scrollHeight;
+}
+// After a reconnect the server may say "nothing to do": work out from the stored messages whether our
+// message never arrived (send it again), the reply is already saved (show it), or it is still being written (wait).
+async function syncAfterNoop(text) {
+    const res = await fetch('/api/survey/resume', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_token: sessionToken }) });
+    if (!res.ok) throw new TypeError('Load failed');
+    const data = await res.json();
+    const real = data.messages.filter(m => !m.content.startsWith('[TOOL_EVENTS]') && !m.content.startsWith('(The participant has just joined'));
+    const last = real[real.length - 1];
+    const lastUser = [...real].reverse().find(m => m.role === 'user');
+    if (text && (!lastUser || lastUser.content !== text)) {
+        // Our message never reached the server: send it properly this time.
+        return doStreamRequest(text, false);
+    }
+    if (last && last.role === 'user') {
+        // Reply still being generated: wait a moment and ask again.
+        if (streamRetries < 6) { streamRetries++; await new Promise(r => setTimeout(r, 2000)); return doStreamRequest(text, true); }
+        throw new TypeError('Load failed');
+    }
+    userMsgCount = data.user_message_count; updateProgress();
+    renderHistory(data.messages);
+    configureVisualPanel();
+}
+
 // ── Replay tool events (resume) ──
 function replayToolEvents(content) {
     try {
@@ -1140,12 +1206,7 @@ function replayToolEvents(content) {
                 document.getElementById('survey-title').textContent = surveyTitle;
                 document.getElementById('survey-topic').textContent = surveyTopic;
                 document.getElementById('briefing-btn').classList.toggle('hidden', !hasBriefing());
-                seedVisualPanel();
-                for (const m of data.messages) {
-                    if (m.content.startsWith('[TOOL_EVENTS]')) replayToolEvents(m.content);
-                    else if (m.role === 'assistant' && m.content !== '(presented interactive content)') addMessage('assistant', m.content);
-                    else if (m.role === 'user' && !m.content.startsWith('(The participant has just joined')) addMessage('user', m.content);
-                }
+                renderHistory(data.messages);
                 configureVisualPanel();
                 updateProgress();
                 // Reopened the link before answering anything: show the briefing again first.
@@ -1153,6 +1214,11 @@ function replayToolEvents(content) {
                 else show('chat-screen');
                 const msgs = document.getElementById('messages');
                 msgs.scrollTop = msgs.scrollHeight;
+                // If the last stored message is the participant's own (reply never arrived), fetch the reply now.
+                const real = data.messages.filter(m => !m.content.startsWith('[TOOL_EVENTS]'));
+                if (real.length && real[real.length - 1].role === 'user' && !real[real.length - 1].content.startsWith('(The participant has just joined')) {
+                    doStreamRequest(null, true);
+                }
                 return;
             }
             localStorage.removeItem('survey_session');
