@@ -1743,7 +1743,7 @@ async function sendAnalysis() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let gotData = false;
+        let gotData = false, truncated = false;
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -1755,13 +1755,16 @@ async function sendAnalysis() {
                 try {
                     const data = JSON.parse(line.slice(6));
                     if (data.t === 'chunk' && data.v) {
+                        if (!gotData) assistantEl.textContent = '';   // drop the "Analyzing…" placeholder
                         gotData = true;
                         assistantEl.textContent += data.v;
                         container.scrollTop = container.scrollHeight;
                     } else if (data.t === 'error') {
                         assistantEl.innerHTML = '<span style="color:#ef4444">Error: ' + (data.v || 'Unknown error') + '</span>';
                     } else if (data.t === 'status') {
-                        assistantEl.textContent = data.v || '';
+                        if (!gotData) assistantEl.textContent = data.v || '';
+                    } else if (data.t === 'truncated') {
+                        truncated = true;
                     }
                 } catch (parseErr) {
                     console.error('SSE parse error:', parseErr, 'line:', line);
@@ -1773,6 +1776,7 @@ async function sendAnalysis() {
             const rawText = assistantEl.textContent;
             assistantEl.innerHTML = renderMd(rawText);
             hydrateCharts(assistantEl);
+            if (truncated) assistantEl.innerHTML += '<div class="kv" style="margin-top:10px;color:var(--danger)">This reply reached the length limit. Type <b>continue</b> to carry on from here.</div>';
             const cb = assistantWrapper.querySelector('.analysis-msg-cb');
             if (cb) cb.dataset.content = rawText;
         } else if (!assistantEl.textContent && !assistantEl.innerHTML.includes('Error')) {

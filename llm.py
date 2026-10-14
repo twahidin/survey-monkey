@@ -227,6 +227,10 @@ async def _anthropic_stream(cfg, model, system, messages, tools, max_tokens) -> 
                         yield {"type": "text", "text": delta.text}
                     elif delta.type == "input_json_delta" and event.index in tool_uses:
                         tool_uses[event.index]["input_json"] += delta.partial_json
+                elif event.type == "message_delta":
+                    reason = getattr(getattr(event, "delta", None), "stop_reason", None)
+                    if reason:
+                        yield {"type": "stop", "reason": reason}
                 elif event.type == "content_block_start":
                     block = event.content_block
                     if block.type == "tool_use":
@@ -319,6 +323,9 @@ async def _openrouter_stream(cfg, model, system, messages, tools, max_tokens) ->
                         content = delta.get("content")
                         if content:
                             yield {"type": "text", "text": content}
+                        if choice.get("finish_reason"):
+                            fr = choice["finish_reason"]
+                            yield {"type": "stop", "reason": "max_tokens" if fr == "length" else fr}
                         for tc in delta.get("tool_calls") or []:
                             idx = tc.get("index", 0)
                             slot = pending_tools.setdefault(idx, {"name": "", "arguments": ""})

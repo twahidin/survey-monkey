@@ -43,6 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger(__name__)
 
 APP_NAME = os.environ.get("APP_NAME", "Ponder")
+ANALYSIS_MAX_TOKENS = int(os.environ.get("ANALYSIS_MAX_TOKENS", "32000"))   # analysis chat reply budget
 app = FastAPI(title=APP_NAME, version="2.0.0")
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1477,15 +1478,19 @@ async def analyze_survey(
 
     async def analysis_stream():
         full_text = []
+        truncated = False
         yield f"data: {json.dumps({'t': 'status', 'v': 'Analyzing survey data...'})}\n\n"
         # Try the analysis model first, then the chat model as a fallback
         for analysis in (True, False):
             full_text = []
             try:
-                async for ev in stream_chat(cfg, system_prompt, history, tools=None, max_tokens=8192, analysis=analysis):
+                # Streaming, so a large budget is safe; thinking tokens count toward it on current models.
+                async for ev in stream_chat(cfg, system_prompt, history, tools=None, max_tokens=ANALYSIS_MAX_TOKENS, analysis=analysis):
                     if ev["type"] == "text":
                         full_text.append(ev["text"])
                         yield f"data: {json.dumps({'t': 'chunk', 'v': ev['text']})}\n\n"
+                    elif ev["type"] == "stop" and ev.get("reason") == "max_tokens":
+                        truncated = True
                 if full_text:
                     break
                 logger.warning("Analysis model returned an empty response, trying fallback")
@@ -1508,6 +1513,8 @@ async def analyze_survey(
             except Exception as e:
                 logger.error(f"Failed to save analysis message: {e}")
                 db.rollback()
+        if truncated:
+            yield f"data: {json.dumps({'t': 'truncated'})}\n\n"
         yield f"data: {json.dumps({'t': 'done'})}\n\n"
 
     return StreamingResponse(
