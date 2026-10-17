@@ -16,9 +16,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import case, func
+from sqlalchemy import case, func, text
 
-from database import get_db, init_db, SessionLocal
+from database import get_db, init_db, SessionLocal, engine
 from models import (
     Survey, SurveyStatus, Participant, ParticipantStatus,
     ChatMessage, AdminUser, AnalysisMessage, SurveyInsight, InviteCode, MediaAsset,
@@ -95,15 +95,17 @@ def compose_system_prompt(survey_type, questions, instructions):
 
 # ──────────────────────────── Startup ────────────────────────────
 
+STARTUP_LOCK_ID = 727001   # Postgres advisory lock: workers take turns running migrations and admin setup
+
+
 def _wait_for_db(max_attempts: int = 10, delay: float = 2.0):
-    """Retry DB connection at startup (e.g. Postgres not ready yet on Railway)."""
+    """Connect at startup, retrying while Postgres is not ready yet (e.g. on Railway). Returns an open connection."""
     import time
     from sqlalchemy.exc import OperationalError
     for attempt in range(max_attempts):
         try:
-            init_db()
-            return
-        except OperationalError as e:
+            return engine.connect()
+        except OperationalError:
             if attempt == max_attempts - 1:
                 raise
             print(f"Database not ready (attempt {attempt + 1}/{max_attempts}), retrying in {delay}s...")
@@ -112,7 +114,23 @@ def _wait_for_db(max_attempts: int = 10, delay: float = 2.0):
 
 @app.on_event("startup")
 def on_startup():
-    _wait_for_db()
+    # Several uvicorn workers start at once (WEB_CONCURRENCY); only one at a time may create tables,
+    # run migrations and set up the default admin, or they race on CREATE TABLE / INSERT.
+    lock_conn = _wait_for_db()
+    lock_conn.execute(text("SELECT pg_advisory_lock(:id)"), {"id": STARTUP_LOCK_ID})
+    try:
+        _startup_work()
+    finally:
+        lock_conn.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": STARTUP_LOCK_ID})
+        lock_conn.close()
+    if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
+        for var in ("SECRET_KEY", "ENCRYPTION_KEY"):
+            if not os.environ.get(var):
+                logger.warning("%s is not set: each worker generates its own, so logins or stored keys will not work across workers. Set it.", var)
+
+
+def _startup_work():
+    init_db()
     # Ensure default admin from env vars exists and password matches (so Railway vars always work)
     db = SessionLocal()
     try:
@@ -1987,7 +2005,31 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
 
 
 STREAM_PING_SECONDS = 15
-_pending_replies: set = set()   # participant ids with a reply being generated right now
+REPLY_IN_PROGRESS_SECONDS = 300   # a reply older than this without a saved result is assumed lost (worker restart)
+_pending_replies: set = set()   # participant ids with a reply being generated in this worker right now
+
+
+def _reply_in_progress(participant) -> bool:
+    """True while a reply to the participant's last message is being generated, in this worker or another.
+
+    Workers do not share memory, so besides the local set the participant row carries ``reply_started_at``
+    (set when a reply starts, cleared when it is saved or fails).
+    """
+    if participant.id in _pending_replies:
+        return True
+    started = participant.reply_started_at
+    return bool(started) and (datetime.now(timezone.utc) - started).total_seconds() < REPLY_IN_PROGRESS_SECONDS
+
+
+def _clear_reply_flag(participant_id):
+    db = SessionLocal()
+    try:
+        db.query(Participant).filter(Participant.id == participant_id).update({"reply_started_at": None})
+        db.commit()
+    except Exception as e:   # pragma: no cover - a stale flag only delays a resume by REPLY_IN_PROGRESS_SECONDS
+        logger.warning("Could not clear reply flag for %s: %s", participant_id, e)
+    finally:
+        db.close()
 
 
 async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, history: list,
@@ -1998,6 +2040,7 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
     does not lose the reply: it is saved anyway and the page picks it up on retry or reload.
     """
     full_text, tool_events = [], []
+    saved = False
     try:
         tools = build_survey_tools(cfg, slide_count, survey_type in INTERACTIVE_SURVEY_TYPES)
         try:
@@ -2045,12 +2088,15 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
             if tool_events:
                 db.add(ChatMessage(participant_id=participant_id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
             is_complete = near_limit
+            if participant:
+                participant.reply_started_at = None
             if is_complete and participant:
                 now = datetime.now(timezone.utc)
                 participant.status = ParticipantStatus.COMPLETED
                 participant.completed_at = now
                 participant.duration_seconds = (now - participant.started_at).total_seconds()
             db.commit()
+            saved = True
         finally:
             db.close()
         await queue.put({"t": "done", "is_complete": is_complete})
@@ -2059,15 +2105,21 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
         await queue.put({"t": "error", "v": "Something went wrong. Please try again."})
     finally:
         _pending_replies.discard(participant_id)
+        if not saved:
+            _clear_reply_flag(participant_id)
         await queue.put(None)
 
 
-async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant, survey, db, near_limit: bool, slide_count: int = 0):
-    """SSE response: relays producer events and sends keep-alive pings while the model is thinking."""
+async def _chat_stream_generator(cfg: LLMConfig, system: str, history: list, participant_id, survey_id, survey_type: str,
+                                 near_limit: bool, slide_count: int = 0):
+    """SSE response: relays producer events and sends keep-alive pings while the model is thinking.
+
+    Takes plain ids, not ORM objects: the request's session is closed before streaming starts.
+    """
     queue: asyncio.Queue = asyncio.Queue()
-    _pending_replies.add(participant.id)
-    asyncio.create_task(_produce_reply(queue, cfg, system, history, participant.id, survey.id,
-                                       survey.survey_type or "", near_limit, slide_count))
+    _pending_replies.add(participant_id)
+    asyncio.create_task(_produce_reply(queue, cfg, system, history, participant_id, survey_id,
+                                       survey_type or "", near_limit, slide_count))
     while True:
         try:
             item = await asyncio.wait_for(queue.get(), timeout=STREAM_PING_SECONDS)
@@ -2149,7 +2201,7 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     if req.resume_reply:
         # The page lost the connection mid-reply. If the reply was saved in the meantime, or is still being
         # generated, there is nothing to redo; otherwise answer the last stored participant message.
-        if participant.id in _pending_replies or not history or history[-1]["role"] != "user":
+        if _reply_in_progress(participant) or not history or history[-1]["role"] != "user":
             async def _nothing():
                 yield f"data: {json.dumps({'t': 'done', 'is_complete': False, 'noop': True})}\n\n"
             return StreamingResponse(_nothing(), media_type="text/event-stream",
@@ -2176,8 +2228,11 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             "and end the conversation warmly. Do not use tools in this final message.]"
         )}
 
+    participant_id, survey_id, survey_type = participant.id, survey.id, survey.survey_type
+    participant.reply_started_at = datetime.now(timezone.utc)   # visible to every worker, see _reply_in_progress
+    db.commit()
     db.close()   # the producer task uses its own short-lived sessions; do not pin a connection for the whole stream
-    gen = _chat_stream_generator(cfg, system, history, participant, survey, db, near_limit, len(slides))
+    gen = _chat_stream_generator(cfg, system, history, participant_id, survey_id, survey_type, near_limit, len(slides))
     return StreamingResponse(
         gen,
         media_type="text/event-stream",
@@ -2493,4 +2548,5 @@ def admin_info():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    workers = int(os.environ.get("WEB_CONCURRENCY", "1"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False, workers=workers)

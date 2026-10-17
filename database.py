@@ -17,8 +17,11 @@ if DATABASE_URL.startswith("postgres://"):
 if DATABASE_URL.startswith("Ppostgresql://"):
     DATABASE_URL = "postgresql://" + DATABASE_URL[len("Ppostgresql://"):]
 
-# Pool sized for many concurrent survey participants (each streaming chat holds a connection)
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=25, max_overflow=75)
+# Sessions are held only around DB work (a few milliseconds per request), so a worker needs very few
+# connections even with hundreds of participants streaming: peak measured at 500 simultaneous users was 2.
+# With WEB_CONCURRENCY workers the ceiling is workers x (pool_size + max_overflow); keep the total under
+# the Postgres max_connections (100 on a default Railway Postgres).
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=15)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -108,6 +111,7 @@ def init_db():
         ))
         conn.execute(text("ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS page_index INTEGER"))
         conn.execute(text("ALTER TABLE media_assets ADD COLUMN IF NOT EXISTS text_content TEXT"))
+        conn.execute(text("ALTER TABLE participants ADD COLUMN IF NOT EXISTS reply_started_at TIMESTAMPTZ"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_assets_survey_id ON media_assets(survey_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_assets_participant_id ON media_assets(participant_id)"))
         conn.commit()

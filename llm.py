@@ -14,6 +14,7 @@ Tool calls are surfaced as ``{"type": "tool_use", "name": ..., "input": {...}}``
 regardless of provider, so the rest of the app never needs to know which backend is in use.
 """
 
+import itertools
 import json
 import logging
 import os
@@ -148,33 +149,46 @@ def _friendly_http_error(resp: httpx.Response, provider: str) -> LLMError:
 # ── Shared HTTP clients ──
 # Building an HTTP client costs ~45 ms of blocking CPU (TLS context), so one per model call would serialise
 # a classroom's worth of simultaneous requests. Clients are created once and reused.
-_anthropic_clients: dict = {}
-_http_client: Optional[httpx.AsyncClient] = None
-HTTP_LIMITS = httpx.Limits(max_connections=400, max_keepalive_connections=100)
+# They are also sharded: httpcore's pool rescans every connection it holds on each request event, which with
+# several hundred streams open in a single pool took a third of the CPU. Spreading the streams over
+# HTTP_SHARDS pools (round-robin) keeps each scan short.
+HTTP_SHARDS = 8
+HTTP_LIMITS = httpx.Limits(max_connections=1000, max_keepalive_connections=100)
+_http_clients: list = [None] * HTTP_SHARDS
+_anthropic_clients: dict = {}          # (api_key, workspace) -> list of HTTP_SHARDS clients (built lazily)
+_shard_counter = itertools.count()
+
+
+def _next_shard() -> int:
+    return next(_shard_counter) % HTTP_SHARDS
 
 
 def shared_http() -> httpx.AsyncClient:
-    """Process-wide httpx client for OpenRouter, image providers, Unsplash and Pexels. Pass per-call timeouts/headers."""
-    global _http_client
-    if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0), limits=HTTP_LIMITS, follow_redirects=False)
-    return _http_client
+    """Process-wide httpx client (one of a few shards) for OpenRouter, image providers, Unsplash and Pexels. Pass per-call timeouts/headers."""
+    i = _next_shard()
+    client = _http_clients[i]
+    if client is None or client.is_closed:
+        client = _http_clients[i] = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0), limits=HTTP_LIMITS, follow_redirects=False)
+    return client
 
 
 def _anthropic_client(cfg: LLMConfig) -> anthropic.AsyncAnthropic:
     if not cfg.api_key:
         raise LLMError("No Anthropic API key configured. Add one in Settings or set ANTHROPIC_API_KEY.", 500)
     key = (cfg.api_key, ANTHROPIC_WORKSPACE_ID)
-    client = _anthropic_clients.get(key)
+    shards = _anthropic_clients.get(key)
+    if shards is None:
+        if len(_anthropic_clients) > 50:   # many teacher-specific keys: keep the cache bounded
+            _anthropic_clients.clear()
+        shards = _anthropic_clients[key] = [None] * HTTP_SHARDS
+    i = _next_shard()
+    client = shards[i]
     if client is None:
         kwargs = {"api_key": cfg.api_key, "max_retries": 3}
         if ANTHROPIC_WORKSPACE_ID:
             # Organisation-level keys must name the workspace to bill.
             kwargs["default_headers"] = {"anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID}
-        client = anthropic.AsyncAnthropic(**kwargs)
-        if len(_anthropic_clients) > 50:   # many teacher-specific keys: keep the cache bounded
-            _anthropic_clients.clear()
-        _anthropic_clients[key] = client
+        client = shards[i] = anthropic.AsyncAnthropic(**kwargs)
     return client
 
 

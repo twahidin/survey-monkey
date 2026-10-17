@@ -21,4 +21,5 @@ ENV PORT=8000
 
 EXPOSE ${PORT}
 
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
+# One Python process saturates a CPU core at ~300 simultaneous participants; WEB_CONCURRENCY workers share the load.
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY:-4}

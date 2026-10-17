@@ -123,6 +123,7 @@ class Participant(Base):
     contact_name = Column(String(255), nullable=True)
     contact_email = Column(String(255), nullable=True)
     contact_phone = Column(String(100), nullable=True)
+    reply_started_at = Column(DateTime(timezone=True), nullable=True)   # set while a reply is being generated (any worker)
 
     survey = relationship("Survey", back_populates="participants")
     messages = relationship("ChatMessage", back_populates="participant", cascade="all, delete-orphan")

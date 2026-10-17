@@ -59,6 +59,7 @@ In your Railway service settings, add:
 | `ENCRYPTION_KEY` | A Fernet key for encrypting stored API keys (`python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"`). Set it so keys survive restarts |
 | `APP_URL` | *(Optional)* public URL of the app, sent to OpenRouter as the referer |
 | `MAX_UPLOAD_MB` | *(Optional)* briefing upload limit (default 25) |
+| `WEB_CONCURRENCY` | *(Optional)* number of worker processes (default 4 in Docker). One process handles about 300 people chatting at once; 4 handle a 500-strong cohort with room to spare. Requires `SECRET_KEY` and `ENCRYPTION_KEY` to be set |
 | `DEFAULT_ADMIN_USER` | Initial admin username (default: `admin`) |
 | `DEFAULT_ADMIN_PASS` | Initial admin password (default: `admin123`) |
 | `UNSPLASH_ACCESS_KEY` | *(Optional)* Unsplash API key for images in chat |
