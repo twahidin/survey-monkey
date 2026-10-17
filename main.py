@@ -2316,11 +2316,12 @@ async def list_models(provider: str = "openrouter", db: Session = Depends(get_db
             "chat": [
                 {"id": CLAUDE_CHAT_MODEL, "name": f"{CLAUDE_CHAT_MODEL} (default chat)"},
                 {"id": CLAUDE_ANALYSIS_MODEL, "name": f"{CLAUDE_ANALYSIS_MODEL} (default analysis)"},
-                {"id": "claude-sonnet-5", "name": "Claude Sonnet 5 (recommended)"},
+                {"id": "claude-sonnet-5-5", "name": "Claude Sonnet 5.5 (recommended for conversations)"},
                 {"id": "claude-opus-5-5", "name": "Claude Opus 5.5 (newest Opus, recommended for analysis)"},
                 {"id": "claude-opus-5", "name": "Claude Opus 5 (previous Opus)"},
                 {"id": "claude-fable-5-1", "name": "Claude Fable 5.1 (Anthropic's most capable model, premium price)"},
-                {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5 (fastest, cheapest)"},
+                {"id": "claude-haiku-5-5", "name": "Claude Haiku 5.5 (fastest, cheapest)"},
+                {"id": "claude-sonnet-5", "name": "Claude Sonnet 5 (previous Sonnet)"},
             ],
             "image": [],
         }
