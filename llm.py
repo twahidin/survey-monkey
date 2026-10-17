@@ -145,14 +145,37 @@ def _friendly_http_error(resp: httpx.Response, provider: str) -> LLMError:
 
 # ────────────────────────── Anthropic ──────────────────────────
 
+# ── Shared HTTP clients ──
+# Building an HTTP client costs ~45 ms of blocking CPU (TLS context), so one per model call would serialise
+# a classroom's worth of simultaneous requests. Clients are created once and reused.
+_anthropic_clients: dict = {}
+_http_client: Optional[httpx.AsyncClient] = None
+HTTP_LIMITS = httpx.Limits(max_connections=400, max_keepalive_connections=100)
+
+
+def shared_http() -> httpx.AsyncClient:
+    """Process-wide httpx client for OpenRouter, image providers, Unsplash and Pexels. Pass per-call timeouts/headers."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0), limits=HTTP_LIMITS, follow_redirects=False)
+    return _http_client
+
+
 def _anthropic_client(cfg: LLMConfig) -> anthropic.AsyncAnthropic:
     if not cfg.api_key:
         raise LLMError("No Anthropic API key configured. Add one in Settings or set ANTHROPIC_API_KEY.", 500)
-    kwargs = {"api_key": cfg.api_key}
-    if ANTHROPIC_WORKSPACE_ID:
-        # Organisation-level keys must name the workspace to bill.
-        kwargs["default_headers"] = {"anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID}
-    return anthropic.AsyncAnthropic(**kwargs)
+    key = (cfg.api_key, ANTHROPIC_WORKSPACE_ID)
+    client = _anthropic_clients.get(key)
+    if client is None:
+        kwargs = {"api_key": cfg.api_key, "max_retries": 3}
+        if ANTHROPIC_WORKSPACE_ID:
+            # Organisation-level keys must name the workspace to bill.
+            kwargs["default_headers"] = {"anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID}
+        client = anthropic.AsyncAnthropic(**kwargs)
+        if len(_anthropic_clients) > 50:   # many teacher-specific keys: keep the cache bounded
+            _anthropic_clients.clear()
+        _anthropic_clients[key] = client
+    return client
 
 
 def _wrap_anthropic_error(e: Exception) -> LLMError:
@@ -300,7 +323,8 @@ async def _openrouter_stream(cfg, model, system, messages, tools, max_tokens) ->
         payload["tool_choice"] = "auto"
     pending_tools = {}  # index -> {id, name, arguments}
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
+        client = shared_http()
+        if True:
             async with client.stream("POST", f"{OPENROUTER_BASE_URL}/chat/completions",
                                      headers=_openrouter_headers(cfg), json=payload) as resp:
                 if resp.status_code != 200:
@@ -358,9 +382,8 @@ async def _openrouter_complete(cfg, model, system, messages, tools, max_tokens) 
         payload["tools"] = oa_tools
         payload["tool_choice"] = "auto"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
-            resp = await client.post(f"{OPENROUTER_BASE_URL}/chat/completions",
-                                     headers=_openrouter_headers(cfg), json=payload)
+        resp = await shared_http().post(f"{OPENROUTER_BASE_URL}/chat/completions",
+                                        headers=_openrouter_headers(cfg), json=payload)
     except httpx.HTTPError as e:
         raise LLMError(f"Could not reach OpenRouter: {e}", 503)
     if resp.status_code != 200:
@@ -415,8 +438,7 @@ async def list_openrouter_models(api_key: str = "") -> dict:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(f"{OPENROUTER_BASE_URL}/models", headers=headers)
+        resp = await shared_http().get(f"{OPENROUTER_BASE_URL}/models", headers=headers, timeout=20.0)
     except httpx.HTTPError as e:
         raise LLMError(f"Could not reach OpenRouter: {e}", 503)
     if resp.status_code != 200:

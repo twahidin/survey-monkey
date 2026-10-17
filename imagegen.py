@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 import httpx
 
-from llm import LLMConfig, LLMError, OPENROUTER_BASE_URL, APP_URL
+from llm import LLMConfig, LLMError, OPENROUTER_BASE_URL, APP_URL, shared_http
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +63,8 @@ def _decode_data_url(url: str):
     return base64.b64decode(m.group(2)), m.group(1)
 
 
-async def _fetch_bytes(client: httpx.AsyncClient, url: str):
-    resp = await client.get(url, follow_redirects=True)
+async def _fetch_bytes(client: httpx.AsyncClient, url: str, headers=None):
+    resp = await client.get(url, follow_redirects=True, headers=headers, timeout=httpx.Timeout(90.0, connect=15.0))
     if resp.status_code != 200:
         raise LLMError(f"Image download failed ({resp.status_code}).", 502)
     mime = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
@@ -83,8 +83,7 @@ async def _pollinations(cfg: LLMConfig, prompt: str):
     headers = {}
     if cfg.image_api_key:
         headers["Authorization"] = f"Bearer {cfg.image_api_key}"
-    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=15.0), headers=headers) as client:
-        return await _fetch_bytes(client, url)
+    return await _fetch_bytes(shared_http(), url, headers=headers)
 
 
 async def _openrouter(cfg: LLMConfig, prompt: str):
@@ -102,8 +101,8 @@ async def _openrouter(cfg: LLMConfig, prompt: str):
         "HTTP-Referer": APP_URL,
         "X-Title": "Ponder",
     }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
-        resp = await client.post(f"{OPENROUTER_BASE_URL}/chat/completions", headers=headers, json=payload)
+    if True:
+        resp = await shared_http().post(f"{OPENROUTER_BASE_URL}/chat/completions", headers=headers, json=payload)
         if resp.status_code != 200:
             detail = ""
             try:
@@ -138,8 +137,8 @@ async def _openai(cfg: LLMConfig, prompt: str):
     else:
         payload["response_format"] = "b64_json"
     headers = {"Authorization": f"Bearer {cfg.image_api_key}", "Content-Type": "application/json"}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=15.0)) as client:
-        resp = await client.post(f"{base}/images/generations", headers=headers, json=payload)
+    if True:
+        resp = await shared_http().post(f"{base}/images/generations", headers=headers, json=payload)
         if resp.status_code != 200:
             detail = ""
             try:

@@ -31,7 +31,7 @@ from auth import (
 from llm import (
     LLMConfig, LLMError, stream_chat, complete_chat, list_openrouter_models,
     extract_json_object, normalise_config, default_model, PROVIDERS,
-    ANTHROPIC_API_KEY, OPENROUTER_API_KEY, CLAUDE_CHAT_MODEL, CLAUDE_ANALYSIS_MODEL,
+    ANTHROPIC_API_KEY, OPENROUTER_API_KEY, CLAUDE_CHAT_MODEL, CLAUDE_ANALYSIS_MODEL, shared_http,
 )
 from imagegen import generate_image, IMAGE_PROVIDERS
 from slides import extract_slides, deck_context, SlideError
@@ -114,7 +114,7 @@ def _wait_for_db(max_attempts: int = 10, delay: float = 2.0):
 def on_startup():
     _wait_for_db()
     # Ensure default admin from env vars exists and password matches (so Railway vars always work)
-    db = next(get_db())
+    db = SessionLocal()
     try:
         raw_user = os.environ.get("DEFAULT_ADMIN_USER") or "admin"
         raw_pass = os.environ.get("DEFAULT_ADMIN_PASS") or "admin123"
@@ -460,9 +460,10 @@ async def fetch_unsplash_image(query: str) -> dict:
     if not UNSPLASH_ACCESS_KEY:
         return {}
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        if True:
+            client = shared_http()
             resp = await client.get(
-                "https://api.unsplash.com/search/photos",
+                "https://api.unsplash.com/search/photos", timeout=8.0,
                 params={"query": query, "per_page": 1, "orientation": "landscape"},
                 headers={"Authorization": f"Client-ID {UNSPLASH_ACCESS_KEY}"},
             )
@@ -484,9 +485,10 @@ async def fetch_pexels_video(query: str) -> dict:
     if not PEXELS_API_KEY:
         return {}
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        if True:
+            client = shared_http()
             resp = await client.get(
-                "https://api.pexels.com/videos/search",
+                "https://api.pexels.com/videos/search", timeout=8.0,
                 params={"query": query, "per_page": 1},
                 headers={"Authorization": PEXELS_API_KEY},
             )
@@ -1934,6 +1936,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     )
     tools = build_survey_tools(cfg, len(slides), survey_uses_interactives(survey))
     try:
+        db.close()   # release the pooled connection while we wait on the model; the session reconnects on next use
         result = await complete_chat(cfg, system, [{"role": "user", "content": join_prompt}], tools=tools, max_tokens=1024)
     except LLMError as e:
         db.delete(participant)
@@ -1962,6 +1965,8 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
     if tool_events:
         db.add(ChatMessage(participant_id=participant.id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
     db.commit()
+    visual = _visual_payload(db, survey, cfg.image_mode)
+    db.close()   # release the connection now rather than at dependency teardown
 
     return {
         "session_token": session_token,
@@ -1977,7 +1982,7 @@ async def join_survey(req: JoinSurveyRequest, db: Session = Depends(get_db)):
         "contact_prompt": survey.contact_prompt or "",
         "image_mode": cfg.image_mode,
         "briefing": _briefing_payload(survey),
-        **_visual_payload(db, survey, cfg.image_mode),
+        **visual,
     }
 
 
@@ -1993,7 +1998,6 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
     does not lose the reply: it is saved anyway and the page picks it up on retry or reload.
     """
     full_text, tool_events = [], []
-    db = SessionLocal()
     try:
         tools = build_survey_tools(cfg, slide_count, survey_type in INTERACTIVE_SURVEY_TYPES)
         try:
@@ -2005,7 +2009,12 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
                 elif ev["type"] == "tool_use":
                     if ev["name"] == "show_image" and cfg.image_mode == "generate":
                         await queue.put({"t": "status", "v": "Creating an illustration…"})
-                    events = await _process_tool_call(ev["name"], ev["input"], cfg, db, survey_id, participant_id)
+                    # A DB session only for as long as the tool needs one (storing an image, looking up a slide)
+                    tdb = SessionLocal()
+                    try:
+                        events = await _process_tool_call(ev["name"], ev["input"], cfg, tdb, survey_id, participant_id)
+                    finally:
+                        tdb.close()
                     tool_events.extend(events)
                     for event in events:
                         await queue.put(event)
@@ -2029,23 +2038,26 @@ async def _produce_reply(queue: asyncio.Queue, cfg: LLMConfig, system: str, hist
             assistant_text = "Could you tell me a bit more about that?"
             await queue.put({"t": "chunk", "v": assistant_text})
 
-        participant = db.query(Participant).filter(Participant.id == participant_id).first()
-        db.add(ChatMessage(participant_id=participant_id, role="assistant", content=assistant_text))
-        if tool_events:
-            db.add(ChatMessage(participant_id=participant_id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
-        is_complete = near_limit
-        if is_complete and participant:
-            now = datetime.now(timezone.utc)
-            participant.status = ParticipantStatus.COMPLETED
-            participant.completed_at = now
-            participant.duration_seconds = (now - participant.started_at).total_seconds()
-        db.commit()
+        db = SessionLocal()
+        try:
+            participant = db.query(Participant).filter(Participant.id == participant_id).first()
+            db.add(ChatMessage(participant_id=participant_id, role="assistant", content=assistant_text))
+            if tool_events:
+                db.add(ChatMessage(participant_id=participant_id, role="assistant", content=f"[TOOL_EVENTS]{json.dumps(tool_events)}"))
+            is_complete = near_limit
+            if is_complete and participant:
+                now = datetime.now(timezone.utc)
+                participant.status = ParticipantStatus.COMPLETED
+                participant.completed_at = now
+                participant.duration_seconds = (now - participant.started_at).total_seconds()
+            db.commit()
+        finally:
+            db.close()
         await queue.put({"t": "done", "is_complete": is_complete})
     except Exception as e:
         logger.error(f"Reply producer failed: {e}", exc_info=True)
         await queue.put({"t": "error", "v": "Something went wrong. Please try again."})
     finally:
-        db.close()
         _pending_replies.discard(participant_id)
         await queue.put(None)
 
@@ -2164,6 +2176,7 @@ async def survey_chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
             "and end the conversation warmly. Do not use tools in this final message.]"
         )}
 
+    db.close()   # the producer task uses its own short-lived sessions; do not pin a connection for the whole stream
     gen = _chat_stream_generator(cfg, system, history, participant, survey, db, near_limit, len(slides))
     return StreamingResponse(
         gen,

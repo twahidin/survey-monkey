@@ -113,8 +113,13 @@ def init_db():
         conn.commit()
 
 
-def get_db():
-    """Dependency for FastAPI - yields a database session."""
+async def get_db():
+    """Dependency for FastAPI - yields a database session.
+
+    Async on purpose: a sync generator dependency is torn down in the thread pool, and under a burst of
+    requests that teardown lags, leaving connections 'idle in transaction' until the pool runs dry.
+    Closing on the event loop releases the connection the moment the response is built.
+    """
     db = SessionLocal()
     try:
         yield db
